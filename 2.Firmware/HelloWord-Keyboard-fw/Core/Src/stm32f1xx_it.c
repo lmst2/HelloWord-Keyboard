@@ -92,7 +92,8 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
+  *(volatile uint32_t*)0x20004FF0 = 0xB00110AD; /* DFU magic → bootloader enters DFU */
+  NVIC_SystemReset();
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {

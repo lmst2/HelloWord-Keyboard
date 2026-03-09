@@ -12,6 +12,15 @@ static bool isReceiveSuccess = false;
 /* Main Entry ----------------------------------------------------------------*/
 void Main()
 {
+    /* Clear boot watchdog flag — proves to bootloader that app started OK */
+    *(volatile uint32_t*)0x20004FEC = 0;
+
+    /* Start IWDG: ~4s timeout, forces reset if main loop hangs */
+    IWDG->KR  = 0x5555;
+    IWDG->PR  = 4;       /* /64 → ~40kHz/64 ≈ 625Hz */
+    IWDG->RLR = 0xFFF;   /* 4095 / 625 ≈ 6.5s */
+    IWDG->KR  = 0xCCCC;
+
     EEPROM eeprom;
     eeprom.Pull(0, config);
     if (config.configStatus != CONFIG_OK)
@@ -53,6 +62,8 @@ void Main()
             /*-----------------------------------*/
             keyboard.SyncLights();
         }
+
+        IWDG->KR = 0xAAAA; /* Feed watchdog */
     }
 }
 
@@ -85,9 +96,16 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef* hspi)
     keyboard.isRgbTxBusy = false;
 }
 
+static void RebootToDfu()
+{
+    *(volatile uint32_t*)0x20004FF0 = 0xB00110AD;
+    NVIC_SystemReset();
+}
+
 extern "C"
 void HID_RxCpltCallback(uint8_t* _data)
 {
+    if(_data[1] == 0xdf)  RebootToDfu();
     if(_data[1] == 0xbd)  isSoftWareControlColor= false;
     if(_data[1] == 0xac) {
         isSoftWareControlColor = true;

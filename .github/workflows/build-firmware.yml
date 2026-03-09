@@ -1,0 +1,63 @@
+name: Build Firmware
+
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install ARM GCC toolchain
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '13.2.Rel1'
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Build HelloWord-Keyboard-bootloader
+        working-directory: 2.Firmware/HelloWord-Keyboard-bootloader
+        run: |
+          mkdir build && cd build
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
+          ninja
+
+      - name: Build HelloWord-Keyboard-fw
+        working-directory: 2.Firmware/HelloWord-Keyboard-fw
+        run: |
+          mkdir build && cd build
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
+          ninja
+
+      - name: Build HelloWord-Dynamic-fw
+        working-directory: 2.Firmware/HelloWord-Dynamic-fw
+        run: |
+          if [ -f Drivers/CMSIS/Lib/libarm_cortexM4lf_math.a ] && [ ! -f Drivers/CMSIS/Lib/arm_cortexM4lf_math.a ]; then
+              cp Drivers/CMSIS/Lib/libarm_cortexM4lf_math.a Drivers/CMSIS/Lib/arm_cortexM4lf_math.a
+          fi
+          mkdir build && cd build
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
+          ninja
+
+      - name: Collect firmware binaries
+        run: |
+          mkdir -p firmware-release
+
+          cp 2.Firmware/HelloWord-Keyboard-bootloader/build/HelloWord-Keyboard-bootloader.hex firmware-release/
+          cp 2.Firmware/HelloWord-Keyboard-bootloader/build/HelloWord-Keyboard-bootloader.bin firmware-release/
+
+          cp 2.Firmware/HelloWord-Keyboard-fw/build/HelloWord-Keyboard-fw.hex firmware-release/
+          cp 2.Firmware/HelloWord-Keyboard-fw/build/HelloWord-Keyboard-fw.bin firmware-release/
+
+          cp 2.Firmware/HelloWord-Dynamic-fw/build/HelloWord-Dynamic-fw.hex firmware-release/
+          cp 2.Firmware/HelloWord-Dynamic-fw/build/HelloWord-Dynamic-fw.bin firmware-release/
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: HelloWord-Firmware
+          path: firmware-release/

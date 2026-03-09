@@ -32,10 +32,9 @@ void ThreadCtrlLoop(void* argument)
 
     for (;;)
     {
-        // Suspended here until got Notification.
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
         knob.Tick();
+        IWDG->KR = 0xAAAAU;
     }
 }
 
@@ -104,6 +103,15 @@ void OnTimerCallback()
 /* Default Entry -------------------------------------------------------*/
 void Main(void)
 {
+    /* Clear boot watchdog flag — proves app started successfully */
+    *(volatile uint32_t*)0x2001FFC4U = 0;
+
+    /* IWDG: ~6s timeout, forces reset if any task hangs */
+    IWDG->KR  = 0x5555U;
+    IWDG->PR  = 4;        /* /64 */
+    IWDG->RLR = 0xFFFU;   /* 4095 / (32000/64) ≈ 8.2s */
+    IWDG->KR  = 0xCCCCU;
+
     // Init all communication staff, include USB-CDC/VCP/UART/CAN etc.
     InitCommunication();
 

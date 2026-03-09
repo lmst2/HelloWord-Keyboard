@@ -75,6 +75,51 @@ void MX_FREERTOS_Init(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+
+    /*
+     * Early-boot DFU recovery — bare registers, zero HAL dependency.
+     * Runs BEFORE HAL_Init / clocks / GPIO, so even a completely broken
+     * firmware can't prevent this from executing.
+     */
+    {
+        #define DFU_MAGIC  (*(volatile uint32_t*)0x2001FFC0U)
+        #define BOOT_FLAG  (*(volatile uint32_t*)0x2001FFC4U)
+        int enter_dfu = 0;
+
+        if (DFU_MAGIC == 0xB00110ADU)  { DFU_MAGIC = 0; enter_dfu = 1; }
+        if (BOOT_FLAG == 0xDEADC0DEU)  { BOOT_FLAG = 0; enter_dfu = 1; }
+
+        /* KEY_A=PC8, KEY_B=PC9 — check with bare register access */
+        if (!enter_dfu)
+        {
+            RCC->AHB1ENR |= (1U << 2);                /* GPIOC clock ON */
+            (void)RCC->AHB1ENR;                        /* settle */
+            GPIOC->PUPDR = (GPIOC->PUPDR & ~((3U<<16)|(3U<<18)))
+                         | ((1U<<16)|(1U<<18));        /* PC8,PC9 pull-up */
+            for (volatile int i = 0; i < 5000; i++);   /* debounce */
+            if (!(GPIOC->IDR & (1U<<8)) && !(GPIOC->IDR & (1U<<9)))
+                enter_dfu = 1;
+        }
+
+        if (enter_dfu)
+        {
+            /* Jump to STM32F405 system bootloader in ROM (0x1FFF0000) */
+            __disable_irq();
+            SysTick->CTRL = 0;
+            for (int i = 0; i < 8; i++) {
+                NVIC->ICER[i] = 0xFFFFFFFFU;
+                NVIC->ICPR[i] = 0xFFFFFFFFU;
+            }
+            RCC->APB2ENR |= (1U << 14);    /* SYSCFG clock */
+            (void)RCC->APB2ENR;
+            SYSCFG->MEMRMP = 0x01;          /* remap system flash to 0x0 */
+            SCB->VTOR = 0x1FFF0000U;
+            __set_MSP(*(volatile uint32_t*)0x1FFF0000U);
+            ((void(*)(void))(*(volatile uint32_t*)0x1FFF0004U))();
+            while(1);
+        }
+    }
+
 HAL_RCC_DeInit();
     // This procedure of building a USB serial number should be identical
     // to the way the STM's built-in USB bootloader does it. This means
@@ -124,7 +169,8 @@ HAL_RCC_DeInit();
   MX_SPI2_Init();
   MX_SPI3_Init();
   /* USER CODE BEGIN 2 */
-
+    /* Set boot watchdog flag — Main() must clear it to prove app is healthy */
+    (*(volatile uint32_t*)0x2001FFC4U) = 0xDEADC0DEU;
   /* USER CODE END 2 */
 
   /* Init scheduler */
