@@ -98,7 +98,9 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-  *(volatile uint32_t*)0x2001FFC0U = 0xB00110ADU;
+  RCC->APB1ENR |= RCC_APB1ENR_PWREN;
+  PWR->CR |= PWR_CR_DBP;
+  RTC->BKP0R = 0xB00110ADU;
   NVIC_SystemReset();
   /* USER CODE END HardFault_IRQn 0 */
   while (1)

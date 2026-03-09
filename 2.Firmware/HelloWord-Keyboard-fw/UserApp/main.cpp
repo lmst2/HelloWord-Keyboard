@@ -12,8 +12,10 @@ static bool isReceiveSuccess = false;
 /* Main Entry ----------------------------------------------------------------*/
 void Main()
 {
-    /* Clear boot watchdog flag — proves to bootloader that app started OK */
-    *(volatile uint32_t*)0x20004FEC = 0;
+    /* Clear boot flag in BKP register — proves to bootloader that app started OK */
+    RCC->APB1ENR |= RCC_APB1ENR_PWREN | RCC_APB1ENR_BKPEN;
+    PWR->CR |= PWR_CR_DBP;
+    BKP->DR2 = 0;
 
     /* Start IWDG: ~4s timeout, forces reset if main loop hangs */
     IWDG->KR  = 0x5555;
@@ -98,7 +100,9 @@ void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef* hspi)
 
 static void RebootToDfu()
 {
-    *(volatile uint32_t*)0x20004FF0 = 0xB00110AD;
+    RCC->APB1ENR |= RCC_APB1ENR_PWREN | RCC_APB1ENR_BKPEN;
+    PWR->CR |= PWR_CR_DBP;
+    BKP->DR1 = 0xB011U;
     NVIC_SystemReset();
 }
 

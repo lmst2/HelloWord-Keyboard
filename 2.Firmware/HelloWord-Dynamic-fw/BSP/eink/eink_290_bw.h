@@ -1,6 +1,8 @@
 #ifndef __DEPG0290BxS75AFxX_BW_H__
 #define __DEPG0290BxS75AFxX_BW_H__
 
+#include <cstdint>
+
 /* EPD commands */
 #define DRIVER_OUTPUT_CONTROL                       0x01
 #define BOOSTER_SOFT_START_CONTROL                  0x0C

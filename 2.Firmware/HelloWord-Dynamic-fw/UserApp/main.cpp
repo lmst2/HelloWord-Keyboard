@@ -30,6 +30,12 @@ void ThreadCtrlLoop(void* argument)
     knob.SetEnable(true);
     knob.SetMode(KnobSimulator::MODE_DAMPED);
 
+    /* Start IWDG only AFTER calibration completes, so it doesn't reset mid-calibration */
+    IWDG->KR  = 0x5555U;
+    IWDG->PR  = 4;        /* /64 */
+    IWDG->RLR = 0xFFFU;   /* 4095 / (32000/64) ≈ 8.2s */
+    IWDG->KR  = 0xCCCCU;
+
     for (;;)
     {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
@@ -103,14 +109,10 @@ void OnTimerCallback()
 /* Default Entry -------------------------------------------------------*/
 void Main(void)
 {
-    /* Clear boot watchdog flag — proves app started successfully */
-    *(volatile uint32_t*)0x2001FFC4U = 0;
-
-    /* IWDG: ~6s timeout, forces reset if any task hangs */
-    IWDG->KR  = 0x5555U;
-    IWDG->PR  = 4;        /* /64 */
-    IWDG->RLR = 0xFFFU;   /* 4095 / (32000/64) ≈ 8.2s */
-    IWDG->KR  = 0xCCCCU;
+    /* Clear boot flag in RTC backup register — proves app started successfully */
+    RCC->APB1ENR |= RCC_APB1ENR_PWREN;
+    PWR->CR |= PWR_CR_DBP;
+    RTC->BKP1R = 0;
 
     // Init all communication staff, include USB-CDC/VCP/UART/CAN etc.
     InitCommunication();

@@ -82,8 +82,14 @@ int main(void)
      * firmware can't prevent this from executing.
      */
     {
-        #define DFU_MAGIC  (*(volatile uint32_t*)0x2001FFC0U)
-        #define BOOT_FLAG  (*(volatile uint32_t*)0x2001FFC4U)
+        /* Use RTC backup registers — immune to MSP stack corruption */
+        RCC->APB1ENR |= RCC_APB1ENR_PWREN;
+        (void)RCC->APB1ENR;
+        PWR->CR |= PWR_CR_DBP;
+        (void)PWR->CR;
+
+        #define DFU_MAGIC   RTC->BKP0R
+        #define BOOT_FLAG   RTC->BKP1R
         int enter_dfu = 0;
 
         if (DFU_MAGIC == 0xB00110ADU)  { DFU_MAGIC = 0; enter_dfu = 1; }
@@ -103,16 +109,33 @@ int main(void)
 
         if (enter_dfu)
         {
-            /* Jump to STM32F405 system bootloader in ROM (0x1FFF0000) */
             __disable_irq();
             SysTick->CTRL = 0;
             for (int i = 0; i < 8; i++) {
                 NVIC->ICER[i] = 0xFFFFFFFFU;
                 NVIC->ICPR[i] = 0xFFFFFFFFU;
             }
+
+            /* Force USB disconnect so host re-enumerates cleanly */
+            RCC->AHB2ENR |= (1U << 7);     /* USB OTG FS clock ON */
+            RCC->AHB1ENR |= (1U << 0);     /* GPIOA clock ON */
+            (void)RCC->AHB1ENR;
+            /* PA12 (USB D+) as open-drain output LOW → host sees disconnect */
+            GPIOA->MODER  = (GPIOA->MODER & ~(3U << 24)) | (1U << 24);
+            GPIOA->OTYPER |= (1U << 12);
+            GPIOA->BSRR    = (1U << 28);   /* reset PA12 LOW */
+            for (volatile int d = 0; d < 200000; d++);  /* ~50ms disconnect */
+
+            /* Reset clocks to default HSI state */
+            RCC->CR |= RCC_CR_HSION;
+            while (!(RCC->CR & RCC_CR_HSIRDY));
+            RCC->CFGR = 0;
+            RCC->CR &= ~(RCC_CR_PLLON | RCC_CR_HSEON | RCC_CR_CSSON);
+
             RCC->APB2ENR |= (1U << 14);    /* SYSCFG clock */
             (void)RCC->APB2ENR;
             SYSCFG->MEMRMP = 0x01;          /* remap system flash to 0x0 */
+
             SCB->VTOR = 0x1FFF0000U;
             __set_MSP(*(volatile uint32_t*)0x1FFF0000U);
             ((void(*)(void))(*(volatile uint32_t*)0x1FFF0004U))();
@@ -169,8 +192,10 @@ HAL_RCC_DeInit();
   MX_SPI2_Init();
   MX_SPI3_Init();
   /* USER CODE BEGIN 2 */
-    /* Set boot watchdog flag — Main() must clear it to prove app is healthy */
-    (*(volatile uint32_t*)0x2001FFC4U) = 0xDEADC0DEU;
+    /* Boot flag in RTC backup register — Main() must clear it to prove app is healthy */
+    RCC->APB1ENR |= RCC_APB1ENR_PWREN;
+    PWR->CR |= PWR_CR_DBP;
+    RTC->BKP1R = 0xDEADC0DEU;
   /* USER CODE END 2 */
 
   /* Init scheduler */

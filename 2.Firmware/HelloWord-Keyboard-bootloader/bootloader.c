@@ -7,20 +7,23 @@
  * Layer 1 - DFU magic word: App sends HID cmd 0xDF → writes magic → resets → DFU
  * Layer 2 - Boot watchdog flag: Bootloader sets flag before jumping to app.
  *           App must clear flag within first second. If app crashes and triggers
- *           a soft reset (HardFault/watchdog), flag survives in RAM → DFU.
+ *           a soft reset (HardFault/watchdog), flag survives → DFU.
  * Layer 3 - App validity check: If no valid stack pointer at APP_ADDRESS → DFU
  *
- * Worst case (app hangs without crashing): IWDG in the app forces a hardware
- * reset after ~4s, RAM is preserved, Layer 2 catches it on next boot.
+ * All flags stored in STM32F1 BKP data registers (survive reset, immune to
+ * stack corruption — the old RAM addresses were inside the MSP stack frame).
  */
 
-#define MAGIC_WORD      0xB00110ADU
-#define MAGIC_ADDR      (*(volatile uint32_t*)0x20004FF0U)
-
-#define BOOT_FLAG_WORD  0xDEADC0DEU
-#define BOOT_FLAG_ADDR  (*(volatile uint32_t*)0x20004FECU)
+#define DFU_MAGIC_WORD  0xB011U
+#define BOOT_FLAG_WORD  0xDEADU
 
 #define SRAM_END        0x20005000U
+
+static void bkp_unlock(void)
+{
+    RCC->APB1ENR |= RCC_APB1ENR_PWREN | RCC_APB1ENR_BKPEN;
+    PWR->CR |= PWR_CR_DBP;
+}
 
 static void clock_init(void)
 {
@@ -78,17 +81,19 @@ int main(void)
 {
     int enter_dfu = 0;
 
+    bkp_unlock();
+
     /* Layer 1: Explicit DFU request from app (HID cmd 0xDF) */
-    if (MAGIC_ADDR == MAGIC_WORD)
+    if (BKP->DR1 == DFU_MAGIC_WORD)
     {
-        MAGIC_ADDR = 0;
+        BKP->DR1 = 0;
         enter_dfu = 1;
     }
 
     /* Layer 2: Boot watchdog - app failed to clear flag after last boot */
-    if (BOOT_FLAG_ADDR == BOOT_FLAG_WORD)
+    if (BKP->DR2 == BOOT_FLAG_WORD)
     {
-        BOOT_FLAG_ADDR = 0;
+        BKP->DR2 = 0;
         enter_dfu = 1;
     }
 
@@ -99,7 +104,7 @@ int main(void)
     if (!enter_dfu)
     {
         /* Set boot watchdog flag; app must clear it to prove it booted OK */
-        BOOT_FLAG_ADDR = BOOT_FLAG_WORD;
+        BKP->DR2 = BOOT_FLAG_WORD;
         jump_to_app();
     }
 

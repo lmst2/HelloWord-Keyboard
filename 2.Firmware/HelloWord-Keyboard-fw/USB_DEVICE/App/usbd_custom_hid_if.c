@@ -235,8 +235,9 @@ static int8_t CUSTOM_HID_DeInit_FS(void)
 static int8_t CUSTOM_HID_OutEvent_FS(uint8_t event_idx, uint8_t state)
 {
     /* USER CODE BEGIN 6 */
-
-
+    USBD_CUSTOM_HID_HandleTypeDef *hhid =
+        (USBD_CUSTOM_HID_HandleTypeDef *)hUsbDeviceFS.pClassData;
+    HID_RxCpltCallback(hhid->Report_buf);
     return (USBD_OK);
     /* USER CODE END 6 */
 }
