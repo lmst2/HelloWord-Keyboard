@@ -122,6 +122,34 @@ static uint8_t smoothNoise(uint16_t x, uint16_t y)
 }
 
 
+/* Ripple utilities ----------------------------------------------------------*/
+static void getLedPos(uint8_t idx, uint8_t& x, uint8_t& y)
+{
+    // WS2812B chain snakes: rows 0,2,4 are wired right-to-left
+    if (idx < 14)      { y = 0;  x = (13 - idx) * 17; }
+    else if (idx < 29) { y = 16; x = (idx - 14) * 16; }
+    else if (idx < 44) { y = 32; x = 6 + (43 - idx) * 16; }
+    else if (idx < 58) { y = 48; x = 8 + (idx - 44) * 17; }
+    else if (idx < 72) { y = 64; x = 12 + (71 - idx) * 16; }
+    else if (idx < 82)
+    {
+        y = 80;
+        static const uint8_t row5x[] = {0, 20, 40, 110, 170, 186, 202, 214, 226, 240};
+        x = row5x[idx - 72];
+    }
+    else if (idx < 85) { y = 80; x = (uint8_t)(232 + (idx - 82) * 4); }
+    else               { y = 96; x = (idx - 85) * 13; }
+}
+
+
+static uint8_t approxDist(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2)
+{
+    uint8_t dx = x1 > x2 ? x1 - x2 : x2 - x1;
+    uint8_t dy = y1 > y2 ? y1 - y2 : y2 - y1;
+    return dx > dy ? dx + ((dy * 3) >> 3) : dy + ((dx * 3) >> 3);
+}
+
+
 /* Light Effects -------------------------------------------------------------*/
 static void RenderLightEffect()
 {
@@ -146,27 +174,27 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 2. Rainbow Sweep: arc with brightness wave creating colorful wave */
+        /* 2. Rainbow Sweep: horizontal arc with subtle brightness wave */
         case HWKeyboard::EFFECT_RAINBOW_SWEEP:
         {
-            uint16_t period = HWKeyboard::LED_NUMBER * 2;
-            uint16_t phase = (tick / 15) % period;
-            int16_t center = phase < HWKeyboard::LED_NUMBER
-                             ? (int16_t) phase
-                             : (int16_t)(period - phase);
+            uint16_t phase = (tick / 8) % 480;
+            int16_t sweepX = phase < 240 ? (int16_t) phase : (int16_t)(480 - phase);
 
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
             {
-                int16_t dist = (int16_t) i - center;
+                uint8_t px, py;
+                getLedPos(i, px, py);
+
+                int16_t dist = (int16_t) px - sweepX;
                 int16_t absDist = dist < 0 ? -dist : dist;
-                if (absDist < 30)
+                if (absDist < 60)
                 {
-                    uint8_t hue = (uint8_t)(dist * 5 + (tick / 8));
-                    uint8_t baseBright = absDist < 25
-                                         ? (uint8_t)(255 - absDist * 10)
-                                         : (uint8_t)((30 - absDist) * 40);
-                    uint8_t brightWave = sin8((uint8_t)(tick / 13 + i * 5));
-                    uint8_t val = (uint8_t)(((uint16_t) baseBright * (128 + (brightWave >> 1))) >> 8);
+                    uint8_t hue = (uint8_t)(dist * 3 + (tick / 10));
+                    uint8_t baseBright = absDist < 50
+                                         ? (uint8_t)(255 - absDist * 4)
+                                         : (uint8_t)((60 - absDist) * 20);
+                    uint8_t brightWave = sin8((uint8_t)(tick / 18 + px / 3));
+                    uint8_t val = (uint8_t)(((uint16_t) baseBright * (215 + (brightWave >> 3))) >> 8);
                     keyboard.SetRgbBufferByID(i, HsvToRgb(hue, 255, val));
                 } else
                 {
@@ -320,27 +348,102 @@ static void RenderLightEffect()
         {
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
             {
-                uint16_t nx = (uint16_t) i * 350 + (uint16_t)(tick / 4);
-                uint16_t ny = (uint16_t)(tick / 20);
+                uint8_t px, py;
+                getLedPos(i, px, py);
+
+                uint16_t nx = (uint16_t) px * 5 + (uint16_t)(tick / 30);
+                uint16_t ny = (uint16_t) py * 8 + (uint16_t)(tick / 80);
                 uint8_t n1 = smoothNoise(nx, ny);
 
-                uint16_t nx2 = (uint16_t) i * 700 + (uint16_t)(tick / 6);
-                uint16_t ny2 = (uint16_t)(tick / 12) + 10000;
+                uint16_t nx2 = (uint16_t) px * 10 + (uint16_t)(tick / 50) + 8000;
+                uint16_t ny2 = (uint16_t) py * 16 + (uint16_t)(tick / 60) + 12000;
                 uint8_t n2 = smoothNoise(nx2, ny2);
 
                 uint8_t combined = (uint8_t)(((uint16_t) n1 * 3 + n2) >> 2);
 
-                uint8_t hue = combined * 2;
-                uint8_t contourPhase = combined * 5;
-                uint8_t contourWave = sin8(contourPhase);
+                uint8_t hue = combined;
+                uint8_t contourWave = sin8(combined * 2);
 
-                uint8_t val = 50 + (contourWave >> 1);
+                uint8_t val = 100 + (contourWave >> 2);
                 keyboard.SetRgbBufferByID(i, HsvToRgb(hue, 255, val));
             }
             break;
         }
 
-        /* 8. Static: warm white */
+        /* 8. Ripple: rings expand outward from pressed keys */
+        case HWKeyboard::EFFECT_RIPPLE:
+        {
+            static const uint8_t MAX_RIPPLES = 10;
+            static const uint16_t RIPPLE_LIFE = 800;
+            static const uint8_t RING_WIDTH = 18;
+
+            static struct { uint8_t x, y; uint16_t startTick; } ripples[MAX_RIPPLES];
+            static uint8_t nextSlot = 0;
+            static uint8_t prevPressed[11] = {0};
+            static uint32_t lastDecay = 0;
+
+            if (tick - lastDecay >= 3)
+            {
+                lastDecay = tick;
+                for (uint8_t k = 0; k < HWKeyboard::KEY_NUMBER; k++)
+                    keyboard.keyBrightness[k] = qsub8(keyboard.keyBrightness[k], 10);
+            }
+
+            for (uint8_t k = 0; k < HWKeyboard::KEY_NUMBER; k++)
+            {
+                bool now = keyboard.keyBrightness[k] > 200;
+                bool was = prevPressed[k >> 3] & (1 << (k & 7));
+                if (now && !was)
+                {
+                    uint8_t px, py;
+                    getLedPos(k, px, py);
+                    ripples[nextSlot % MAX_RIPPLES] = {px, py, (uint16_t) tick};
+                    nextSlot++;
+                }
+                if (now) prevPressed[k >> 3] |= (1 << (k & 7));
+                else     prevPressed[k >> 3] &= ~(1 << (k & 7));
+            }
+
+            for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
+            {
+                uint8_t px, py;
+                getLedPos(i, px, py);
+
+                uint8_t bestBright = 0;
+                uint8_t bestHue = 140;
+
+                uint8_t count = nextSlot < MAX_RIPPLES ? nextSlot : MAX_RIPPLES;
+                for (uint8_t r = 0; r < count; r++)
+                {
+                    uint16_t elapsed = (uint16_t) tick - ripples[r].startTick;
+                    if (elapsed > RIPPLE_LIFE) continue;
+
+                    uint8_t radius = (uint8_t)((elapsed * 77) >> 8);
+                    uint8_t dist = approxDist(px, py, ripples[r].x, ripples[r].y);
+                    int16_t ringDelta = (int16_t) dist - radius;
+                    if (ringDelta < 0) ringDelta = -ringDelta;
+                    if (ringDelta >= RING_WIDTH) continue;
+
+                    uint8_t ring = (uint8_t)((RING_WIDTH - ringDelta) * (255 / RING_WIDTH));
+                    uint8_t fade = 255 - (uint8_t)((elapsed * 81) >> 8);
+                    uint8_t bright = (uint8_t)(((uint16_t) ring * fade) >> 8);
+
+                    if (bright > bestBright)
+                    {
+                        bestBright = bright;
+                        bestHue = 140 + (uint8_t)(elapsed / 8);
+                    }
+                }
+
+                if (bestBright > 0)
+                    keyboard.SetRgbBufferByID(i, HsvToRgb(bestHue, 255, bestBright));
+                else
+                    keyboard.SetRgbBufferByID(i, {0, 0, 1});
+            }
+            break;
+        }
+
+        /* 9. Static: warm white */
         case HWKeyboard::EFFECT_STATIC:
         {
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
@@ -351,6 +454,20 @@ static void RenderLightEffect()
         default:
             break;
     }
+}
+
+
+/* Status Indicator LEDs (82-84, near arrow keys) ---------------------------*/
+static const uint8_t STATUS_LED_START = 82;
+static const uint8_t STATUS_LED_COUNT = 3;
+
+static void UpdateStatusLEDs()
+{
+    HWKeyboard::Color_t c = keyboard.isCapsLocked
+                            ? HWKeyboard::Color_t{255, 255, 255}
+                            : HWKeyboard::Color_t{0, 0, 0};
+    for (uint8_t i = 0; i < STATUS_LED_COUNT; i++)
+        keyboard.SetRgbBufferByID(STATUS_LED_START + i, c);
 }
 
 
@@ -392,6 +509,7 @@ void Main()
         if (!isSoftWareControlColor)
         {
             RenderLightEffect();
+            UpdateStatusLEDs();
             keyboard.SyncLights();
         }
 
@@ -427,6 +545,7 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (keyboard.KeyPressed(HWKeyboard::NUM_6))        curFnCombo |= 0x100;
         if (keyboard.KeyPressed(HWKeyboard::NUM_7))        curFnCombo |= 0x200;
         if (keyboard.KeyPressed(HWKeyboard::NUM_8))        curFnCombo |= 0x400;
+        if (keyboard.KeyPressed(HWKeyboard::NUM_9))        curFnCombo |= 0x800;
 
         uint16_t justPressed = curFnCombo & ~prevFnCombo;
 
@@ -440,7 +559,8 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (justPressed & 0x080) keyboard.SetEffect(HWKeyboard::EFFECT_AURORA);
         if (justPressed & 0x100) keyboard.SetEffect(HWKeyboard::EFFECT_DIGITAL_RAIN);
         if (justPressed & 0x200) keyboard.SetEffect(HWKeyboard::EFFECT_CONTOUR);
-        if (justPressed & 0x400) keyboard.SetEffect(HWKeyboard::EFFECT_STATIC);
+        if (justPressed & 0x400) keyboard.SetEffect(HWKeyboard::EFFECT_RIPPLE);
+        if (justPressed & 0x800) keyboard.SetEffect(HWKeyboard::EFFECT_STATIC);
 
         prevFnCombo = curFnCombo;
 
@@ -475,6 +595,12 @@ static void RebootToDfu()
 extern "C"
 void HID_RxCpltCallback(uint8_t* _data)
 {
+    if (_data[0] == 1)
+    {
+        keyboard.isCapsLocked = _data[1] & 0x02;
+        return;
+    }
+
     if(_data[1] == 0xdf)  RebootToDfu();
     if(_data[1] == 0xbd)  isSoftWareControlColor= false;
     if(_data[1] == 0xac) {

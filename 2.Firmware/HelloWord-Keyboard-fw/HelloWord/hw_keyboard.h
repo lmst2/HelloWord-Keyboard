@@ -66,6 +66,7 @@ public:
         EFFECT_AURORA,
         EFFECT_DIGITAL_RAIN,
         EFFECT_CONTOUR,
+        EFFECT_RIPPLE,
         EFFECT_STATIC,
         EFFECT_COUNT
     };
