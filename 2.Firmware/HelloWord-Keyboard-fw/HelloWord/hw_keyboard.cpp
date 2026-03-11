@@ -100,7 +100,7 @@ uint8_t* HWKeyboard::Remap(uint8_t _layer)
 
 bool HWKeyboard::FnPressed()
 {
-    return remapBuffer[9] & 0x02;
+    return remapBuffer[9] & 0x04;
 }
 
 
@@ -244,6 +244,16 @@ void HWKeyboard::SetEffect(LightEffect_t _effect)
 void HWKeyboard::NextEffect()
 {
     currentEffect = (LightEffect_t) ((currentEffect + 1) % EFFECT_COUNT);
+}
+
+
+void HWKeyboard::UpdateKeyPressState()
+{
+    for (uint8_t i = 0; i < KEY_NUMBER; i++)
+    {
+        if (remapBuffer[i / 8] & (0x80 >> (i % 8)))
+            keyBrightness[i] = 255;
+    }
 }
 
 

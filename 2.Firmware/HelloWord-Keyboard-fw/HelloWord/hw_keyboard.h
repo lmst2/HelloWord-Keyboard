@@ -60,10 +60,12 @@ public:
     enum LightEffect_t : uint8_t
     {
         EFFECT_BREATHING = 0,
+        EFFECT_RAINBOW_SWEEP,
+        EFFECT_STARFALL,
+        EFFECT_REACTIVE,
+        EFFECT_AURORA,
+        EFFECT_DIGITAL_RAIN,
         EFFECT_STATIC,
-        EFFECT_RAINBOW,
-        EFFECT_RAINBOW_WAVE,
-        EFFECT_SPECTRUM,
         EFFECT_COUNT
     };
 
@@ -95,6 +97,7 @@ public:
     void DecreaseBrightness();
     void SetEffect(LightEffect_t _effect);
     void NextEffect();
+    void UpdateKeyPressState();
 
 
     int16_t keyMap[5][IO_NUMBER] = {
@@ -125,6 +128,7 @@ public:
     bool isCapsLocked = false;
     uint8_t brightnessLevel = 4;
     LightEffect_t currentEffect = EFFECT_BREATHING;
+    uint8_t keyBrightness[LED_NUMBER]{};
 
 
 private:
