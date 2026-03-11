@@ -76,9 +76,62 @@ static inline uint8_t qsub8(uint8_t a, uint8_t b)
 }
 
 
+/* Noise utilities for contour effect ----------------------------------------*/
+static uint8_t noisePerm(uint8_t x)
+{
+    static const uint8_t p[] = {
+        151,160,137, 91, 90, 15,131, 13,201, 95, 96, 53,194,233,  7,225,
+        140, 36,103, 30, 69,142,  8, 99, 37,240, 21, 10, 23,190,  6,148,
+        247,120,234, 75,  0, 26,197, 62, 94,252,219,203,117, 35, 11, 32,
+         65,195, 76,204, 98, 57,227,186,132, 83,158, 87,144, 41, 82,167
+    };
+    return p[x & 0x3F];
+}
+
+
+static uint8_t noiseHash2D(uint8_t x, uint8_t y)
+{
+    return noisePerm(noisePerm(x) + y);
+}
+
+
+static uint8_t lerp8(uint8_t a, uint8_t b, uint8_t t)
+{
+    return (uint8_t)(((uint32_t) a * (256 - t) + (uint32_t) b * t) >> 8);
+}
+
+
+static uint8_t smoothNoise(uint16_t x, uint16_t y)
+{
+    uint8_t ix = x >> 8;
+    uint8_t iy = y >> 8;
+    uint8_t fx = x & 0xFF;
+    uint8_t fy = y & 0xFF;
+
+    uint16_t fx2 = ((uint16_t) fx * fx) >> 8;
+    uint8_t sfx = (uint8_t)(3 * fx2 - 2 * ((fx2 * (uint16_t) fx) >> 8));
+    uint16_t fy2 = ((uint16_t) fy * fy) >> 8;
+    uint8_t sfy = (uint8_t)(3 * fy2 - 2 * ((fy2 * (uint16_t) fy) >> 8));
+
+    uint8_t v00 = noiseHash2D(ix, iy);
+    uint8_t v10 = noiseHash2D(ix + 1, iy);
+    uint8_t v01 = noiseHash2D(ix, iy + 1);
+    uint8_t v11 = noiseHash2D(ix + 1, iy + 1);
+
+    return lerp8(lerp8(v00, v10, sfx), lerp8(v01, v11, sfx), sfy);
+}
+
+
 /* Light Effects -------------------------------------------------------------*/
 static void RenderLightEffect()
 {
+    if (keyboard.brightnessLevel == 0)
+    {
+        for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
+            keyboard.SetRgbBufferByID(i, {0, 0, 0});
+        return;
+    }
+
     uint32_t tick = HAL_GetTick();
 
     switch (keyboard.currentEffect)
@@ -93,7 +146,7 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 2. Rainbow Sweep: arc of rainbow colors sweeping back and forth */
+        /* 2. Rainbow Sweep: arc with brightness wave creating colorful wave */
         case HWKeyboard::EFFECT_RAINBOW_SWEEP:
         {
             uint16_t period = HWKeyboard::LED_NUMBER * 2;
@@ -106,10 +159,14 @@ static void RenderLightEffect()
             {
                 int16_t dist = (int16_t) i - center;
                 int16_t absDist = dist < 0 ? -dist : dist;
-                if (absDist < 25)
+                if (absDist < 30)
                 {
                     uint8_t hue = (uint8_t)(dist * 5 + (tick / 8));
-                    uint8_t val = 255 - (uint8_t)(absDist * 10);
+                    uint8_t baseBright = absDist < 25
+                                         ? (uint8_t)(255 - absDist * 10)
+                                         : (uint8_t)((30 - absDist) * 40);
+                    uint8_t brightWave = sin8((uint8_t)(tick / 13 + i * 5));
+                    uint8_t val = (uint8_t)(((uint16_t) baseBright * (128 + (brightWave >> 1))) >> 8);
                     keyboard.SetRgbBufferByID(i, HsvToRgb(hue, 255, val));
                 } else
                 {
@@ -258,7 +315,32 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 7. Static: warm white */
+        /* 7. Contour: topographic contour lines flowing with Perlin noise */
+        case HWKeyboard::EFFECT_CONTOUR:
+        {
+            for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
+            {
+                uint16_t nx = (uint16_t) i * 350 + (uint16_t)(tick / 4);
+                uint16_t ny = (uint16_t)(tick / 20);
+                uint8_t n1 = smoothNoise(nx, ny);
+
+                uint16_t nx2 = (uint16_t) i * 700 + (uint16_t)(tick / 6);
+                uint16_t ny2 = (uint16_t)(tick / 12) + 10000;
+                uint8_t n2 = smoothNoise(nx2, ny2);
+
+                uint8_t combined = (uint8_t)(((uint16_t) n1 * 3 + n2) >> 2);
+
+                uint8_t hue = combined * 2;
+                uint8_t contourPhase = combined * 5;
+                uint8_t contourWave = sin8(contourPhase);
+
+                uint8_t val = 50 + (contourWave >> 1);
+                keyboard.SetRgbBufferByID(i, HsvToRgb(hue, 255, val));
+            }
+            break;
+        }
+
+        /* 8. Static: warm white */
         case HWKeyboard::EFFECT_STATIC:
         {
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
@@ -344,6 +426,7 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (keyboard.KeyPressed(HWKeyboard::NUM_5))        curFnCombo |= 0x080;
         if (keyboard.KeyPressed(HWKeyboard::NUM_6))        curFnCombo |= 0x100;
         if (keyboard.KeyPressed(HWKeyboard::NUM_7))        curFnCombo |= 0x200;
+        if (keyboard.KeyPressed(HWKeyboard::NUM_8))        curFnCombo |= 0x400;
 
         uint16_t justPressed = curFnCombo & ~prevFnCombo;
 
@@ -356,7 +439,8 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (justPressed & 0x040) keyboard.SetEffect(HWKeyboard::EFFECT_REACTIVE);
         if (justPressed & 0x080) keyboard.SetEffect(HWKeyboard::EFFECT_AURORA);
         if (justPressed & 0x100) keyboard.SetEffect(HWKeyboard::EFFECT_DIGITAL_RAIN);
-        if (justPressed & 0x200) keyboard.SetEffect(HWKeyboard::EFFECT_STATIC);
+        if (justPressed & 0x200) keyboard.SetEffect(HWKeyboard::EFFECT_CONTOUR);
+        if (justPressed & 0x400) keyboard.SetEffect(HWKeyboard::EFFECT_STATIC);
 
         prevFnCombo = curFnCombo;
 
