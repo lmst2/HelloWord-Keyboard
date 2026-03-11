@@ -1,17 +1,17 @@
 #include "stm32f1xx.h"
-#include "usb_dfu.h"
+#include "usb_hid.h"
 
 /*
  * Recovery architecture (3 layers):
  *
- * Layer 1 - DFU magic word: App sends HID cmd 0xDF → writes magic → resets → DFU
+ * Layer 1 - Magic word: App sends HID cmd 0xDF → writes magic → resets → bootloader
  * Layer 2 - Boot watchdog flag: Bootloader sets flag before jumping to app.
  *           App must clear flag within first second. If app crashes and triggers
- *           a soft reset (HardFault/watchdog), flag survives → DFU.
- * Layer 3 - App validity check: If no valid stack pointer at APP_ADDRESS → DFU
+ *           a soft reset (HardFault/watchdog), flag survives → bootloader.
+ * Layer 3 - App validity check: If no valid stack pointer at APP_ADDRESS → bootloader
  *
  * All flags stored in STM32F1 BKP data registers (survive reset, immune to
- * stack corruption — the old RAM addresses were inside the MSP stack frame).
+ * stack corruption).
  */
 
 #define DFU_MAGIC_WORD  0xB011U
@@ -108,15 +108,14 @@ int main(void)
         jump_to_app();
     }
 
-    /* Enter DFU mode */
     clock_init();
-    usb_dfu_init();
+    usb_hid_init();
 
     while (1)
     {
-        usb_dfu_poll();
+        usb_hid_poll();
 
-        if (usb_dfu_is_complete())
+        if (usb_hid_is_complete())
         {
             for (volatile int i = 0; i < 500000; i++);
             NVIC_SystemReset();

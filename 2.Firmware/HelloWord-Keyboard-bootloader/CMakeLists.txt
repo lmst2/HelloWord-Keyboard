@@ -33,7 +33,7 @@ add_definitions(-DSTM32F103xB)
 
 set(SOURCES
     bootloader.c
-    usb_dfu.c
+    usb_hid.c
     ${KBD_FW_DIR}/startup/startup_stm32f103xb.s
 )
 
