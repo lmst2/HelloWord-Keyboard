@@ -57,6 +57,16 @@ public:
         /*------------------------- HID report data -------------------------*/
     };
 
+    enum LightEffect_t : uint8_t
+    {
+        EFFECT_BREATHING = 0,
+        EFFECT_STATIC,
+        EFFECT_RAINBOW,
+        EFFECT_RAINBOW_WAVE,
+        EFFECT_SPECTRUM,
+        EFFECT_COUNT
+    };
+
     struct Color_t
     {
         uint8_t r;
@@ -80,6 +90,11 @@ public:
     uint8_t* GetHidReportBuffer(uint8_t _reportId);
     uint8_t  GetTouchBarState(uint8_t _id = 0);
     void SetRgbBufferByID(uint8_t _keyId, Color_t _color, float _brightness = 1);
+
+    void IncreaseBrightness();
+    void DecreaseBrightness();
+    void SetEffect(LightEffect_t _effect);
+    void NextEffect();
 
 
     int16_t keyMap[5][IO_NUMBER] = {
@@ -108,9 +123,14 @@ public:
 
     volatile bool isRgbTxBusy;
     bool isCapsLocked = false;
+    uint8_t brightnessLevel = 4;
+    LightEffect_t currentEffect = EFFECT_BREATHING;
 
 
 private:
+    static const uint8_t BRIGHTNESS_MAP[];
+    static const uint8_t BRIGHTNESS_LEVELS = 7;
+
     SPI_HandleTypeDef* spiHandle;
     uint8_t spiBuffer[IO_NUMBER / 8 + 1]{};
     uint8_t* scanBuffer;
@@ -119,7 +139,7 @@ private:
     uint8_t remapBuffer[IO_NUMBER / 8]{};
     uint8_t rgbBuffer[LED_NUMBER][3][8]{};
     uint8_t wsCommit[64] = {0};
-    uint8_t brightnessPreDiv = 2; // 1/4
+    uint8_t brightnessPreDiv = 2;
 };
 
 

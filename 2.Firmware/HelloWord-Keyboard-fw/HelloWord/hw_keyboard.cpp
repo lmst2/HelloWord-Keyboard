@@ -2,6 +2,9 @@
 #include "hw_keyboard.h"
 
 
+const uint8_t HWKeyboard::BRIGHTNESS_MAP[] = {7, 5, 4, 3, 2, 1, 0};
+
+
 inline void DelayUs(uint32_t _us)
 {
     for (int i = 0; i < _us; i++)
@@ -208,6 +211,39 @@ uint8_t HWKeyboard::GetTouchBarState(uint8_t _id)
                   (remapBuffer[10] & 0b00010000) >> 3 |
                   (remapBuffer[10] & 0b00100000) >> 5;
     return _id == 0 ? tmp : (tmp & (1 << (_id - 1)));
+}
+
+
+void HWKeyboard::IncreaseBrightness()
+{
+    if (brightnessLevel < BRIGHTNESS_LEVELS - 1)
+    {
+        brightnessLevel++;
+        brightnessPreDiv = BRIGHTNESS_MAP[brightnessLevel];
+    }
+}
+
+
+void HWKeyboard::DecreaseBrightness()
+{
+    if (brightnessLevel > 0)
+    {
+        brightnessLevel--;
+        brightnessPreDiv = BRIGHTNESS_MAP[brightnessLevel];
+    }
+}
+
+
+void HWKeyboard::SetEffect(LightEffect_t _effect)
+{
+    if (_effect < EFFECT_COUNT)
+        currentEffect = _effect;
+}
+
+
+void HWKeyboard::NextEffect()
+{
+    currentEffect = (LightEffect_t) ((currentEffect + 1) % EFFECT_COUNT);
 }
 
 
