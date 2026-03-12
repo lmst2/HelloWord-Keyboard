@@ -192,29 +192,29 @@ static void RenderLightEffect()
         /* 3. Flame: noise-driven fire rising from bottom */
         case HWKeyboard::EFFECT_FLAME:
         {
+            static HWKeyboard::Color_t buf[HWKeyboard::LED_NUMBER];
+            uint16_t nyBase = -(uint16_t)(tick / 2);
+            uint16_t nz = (uint16_t)(tick / 9);
+
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
             {
                 uint8_t px, py;
                 getLedPos(i, px, py);
 
-                // 3D noise scrolling upward → organic flame tongues
-                uint16_t nx = (uint16_t)px * 2;
-                uint16_t ny = (uint16_t)py * 3 - (uint16_t)(tick / 2);
-                uint16_t nz = (uint16_t)(tick / 9);
-                uint8_t n = valueNoise3D(nx, ny, nz);
+                uint8_t n = valueNoise3D((uint16_t)px * 2, (uint16_t)py * 3 + nyBase, nz);
 
-                // Noise-dominant heat with vertical bias (bottom = hotter)
                 int16_t h = (int16_t)n + (int16_t)n / 2 + (int16_t)py * 2 - 180;
                 if (h < 0) h = 0;
                 if (h > 255) h = 255;
 
                 uint8_t heat = (uint8_t)h;
-                uint8_t cr, cg, cb;
-                if (heat < 85)       { cr = heat * 3;  cg = 0;   cb = 0; }
-                else if (heat < 170) { cr = 255;    cg = (uint8_t)((heat - 85) * 3); cb = 0; }
-                else                 { cr = 255;    cg = 255;  cb = (uint8_t)((heat - 170) * 3); }
-                keyboard.SetRgbBufferByID(i, {cr, cg, cb});
+                if (heat < 85)       buf[i] = {(uint8_t)(heat * 3), 0, 0};
+                else if (heat < 170) buf[i] = {255, (uint8_t)((heat - 85) * 3), 0};
+                else                 buf[i] = {255, 255, (uint8_t)((heat - 170) * 3)};
             }
+
+            for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
+                keyboard.SetRgbBufferByID(i, buf[i]);
             break;
         }
 
