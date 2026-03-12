@@ -189,53 +189,51 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 3. Starfall: large meteor impacts with wide glow radius */
-        case HWKeyboard::EFFECT_STARFALL:
+        /* 3. Flame: fire simulation rising from bottom */
+        case HWKeyboard::EFFECT_FLAME:
         {
-            static uint8_t state[HWKeyboard::LED_NUMBER] = {0};
-            static uint32_t lastDecayStar = 0;
+            static uint8_t heat[HWKeyboard::LED_NUMBER] = {0};
+            static uint32_t lastFireTick = 0;
 
-            if (tick - lastDecayStar >= 8)
+            if (tick - lastFireTick >= 12)
             {
-                lastDecayStar = tick;
+                lastFireTick = tick;
 
-                if (fastRand() < 7)
-                {
-                    uint8_t idx = fastRand() % HWKeyboard::LED_NUMBER;
-                    uint8_t cx, cy;
-                    getLedPos(idx, cx, cy);
-                    for (uint8_t j = 0; j < HWKeyboard::LED_NUMBER; j++)
-                    {
-                        uint8_t jx, jy;
-                        getLedPos(j, jx, jy);
-                        uint8_t d = approxDist(cx, cy, jx, jy);
-                        uint8_t b = d < 85 ? qsub8(200, (uint8_t)(d * 3)) : 0;
-                        if (b > state[j]) state[j] = b;
-                    }
-                    state[idx] = 255;
-                }
+                static const uint8_t rowStart[] = {0, 14, 29, 44, 58, 72};
+                static const uint8_t rowLen[]   = {14, 15, 15, 14, 14, 10};
 
                 for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
-                    if (state[i] > 0 && state[i] < 255)
-                        state[i] = qsub8(state[i], 2);
+                    heat[i] = qsub8(heat[i], 2 + (fastRand() & 0x07));
+
+                // Heat rises: each row pulls warmth from the row below
+                for (uint8_t row = 0; row < 5; row++)
+                {
+                    for (uint8_t k = 0; k < rowLen[row]; k++)
+                    {
+                        uint8_t belowK = (uint8_t)((uint16_t)k * rowLen[row + 1] / rowLen[row]);
+                        uint8_t src = heat[rowStart[row + 1] + belowK];
+                        uint8_t& dst = heat[rowStart[row] + k];
+                        dst = (uint8_t)(((uint16_t)dst * 3 + (uint16_t)src * 5) >> 3);
+                    }
+                }
+
+                // Spark new flames at bottom rows
+                for (uint8_t i = 58; i < HWKeyboard::LED_NUMBER; i++)
+                {
+                    if (fastRand() < (i >= 72 ? 90 : 35))
+                        heat[i] = qadd8(heat[i], 80 + (fastRand() % 175));
+                }
             }
 
+            // Heat → fire color: black → red → orange → yellow → white
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
             {
-                uint8_t b = state[i];
-                if (b == 255)
-                {
-                    keyboard.SetRgbBufferByID(i, {255, 255, 255});
-                    state[i] = 254;
-                } else if (b > 0)
-                {
-                    uint8_t r = b > 140 ? (uint8_t)((b - 140) * 2) : 0;
-                    uint8_t g = b > 200 ? (uint8_t)((b - 200) / 2) : 0;
-                    keyboard.SetRgbBufferByID(i, {r, g, b});
-                } else
-                {
-                    keyboard.SetRgbBufferByID(i, {0, 0, 1});
-                }
+                uint8_t h = heat[i];
+                uint8_t cr, cg, cb;
+                if (h < 85)       { cr = h * 3;  cg = 0;   cb = 0; }
+                else if (h < 170) { cr = 255;    cg = (uint8_t)((h - 85) * 3); cb = 0; }
+                else              { cr = 255;    cg = 255;  cb = (uint8_t)((h - 170) * 3); }
+                keyboard.SetRgbBufferByID(i, {cr, cg, cb});
             }
             break;
         }
@@ -579,7 +577,7 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (justPressed & 0x004) keyboard.NextEffect();
         if (justPressed & 0x008) keyboard.SetEffect(HWKeyboard::EFFECT_BREATHING);
         if (justPressed & 0x010) keyboard.SetEffect(HWKeyboard::EFFECT_RAINBOW_SWEEP);
-        if (justPressed & 0x020) keyboard.SetEffect(HWKeyboard::EFFECT_STARFALL);
+        if (justPressed & 0x020) keyboard.SetEffect(HWKeyboard::EFFECT_FLAME);
         if (justPressed & 0x040) keyboard.SetEffect(HWKeyboard::EFFECT_REACTIVE);
         if (justPressed & 0x080) keyboard.SetEffect(HWKeyboard::EFFECT_AURORA);
         if (justPressed & 0x100) keyboard.SetEffect(HWKeyboard::EFFECT_DIGITAL_RAIN);

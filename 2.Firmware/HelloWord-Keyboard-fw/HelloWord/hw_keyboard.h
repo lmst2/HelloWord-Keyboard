@@ -61,7 +61,7 @@ public:
     {
         EFFECT_BREATHING = 0,
         EFFECT_RAINBOW_SWEEP,
-        EFFECT_STARFALL,
+        EFFECT_FLAME,
         EFFECT_REACTIVE,
         EFFECT_AURORA,
         EFFECT_DIGITAL_RAIN,
