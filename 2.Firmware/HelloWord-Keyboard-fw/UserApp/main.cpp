@@ -203,9 +203,9 @@ static void RenderLightEffect()
                 static const uint8_t rowLen[]   = {14, 15, 15, 14, 14, 10};
 
                 for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
-                    heat[i] = qsub8(heat[i], 2 + (fastRand() & 0x07));
+                    heat[i] = qsub8(heat[i], 4 + (fastRand() & 0x0F));
 
-                // Heat rises: each row pulls warmth from the row below
+                // Heat rises: each row pulls a small portion from the row below
                 for (uint8_t row = 0; row < 5; row++)
                 {
                     for (uint8_t k = 0; k < rowLen[row]; k++)
@@ -213,14 +213,14 @@ static void RenderLightEffect()
                         uint8_t belowK = (uint8_t)((uint16_t)k * rowLen[row + 1] / rowLen[row]);
                         uint8_t src = heat[rowStart[row + 1] + belowK];
                         uint8_t& dst = heat[rowStart[row] + k];
-                        dst = (uint8_t)(((uint16_t)dst * 3 + (uint16_t)src * 5) >> 3);
+                        dst = (uint8_t)(((uint16_t)dst * 6 + (uint16_t)src * 2) >> 3);
                     }
                 }
 
-                // Spark new flames at bottom rows
-                for (uint8_t i = 58; i < HWKeyboard::LED_NUMBER; i++)
+                // Spark new flames only at bottom two rows
+                for (uint8_t i = 72; i < HWKeyboard::LED_NUMBER; i++)
                 {
-                    if (fastRand() < (i >= 72 ? 90 : 35))
+                    if (fastRand() < 120)
                         heat[i] = qadd8(heat[i], 80 + (fastRand() % 175));
                 }
             }
