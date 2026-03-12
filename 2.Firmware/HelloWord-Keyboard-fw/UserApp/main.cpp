@@ -174,7 +174,7 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 2. Rainbow Sweep: full-keyboard rainbow flowing right-to-left */
+        /* 2. Rainbow Sweep: full-keyboard rainbow with faster brightness wave */
         case HWKeyboard::EFFECT_RAINBOW_SWEEP:
         {
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
@@ -183,15 +183,15 @@ static void RenderLightEffect()
                 getLedPos(i, px, py);
 
                 uint8_t hue = (uint8_t)(px - tick / 8);
-                uint8_t brightWave = sin8((uint8_t)(tick / 18 + px / 3));
-                uint8_t val = 178 + (uint8_t)(((uint16_t) brightWave * 77) >> 8);
+                uint8_t wave = sin8((uint8_t)(tick / 5 + px / 2));
+                uint8_t val = 178 + (uint8_t)(((uint16_t) wave * 77) >> 8);
 
                 keyboard.SetRgbBufferByID(i, HsvToRgb(hue, 255, val));
             }
             break;
         }
 
-        /* 3. Starfall: stars with glow halo, slow fade like reactive */
+        /* 3. Starfall: large meteor impacts with wide glow radius */
         case HWKeyboard::EFFECT_STARFALL:
         {
             static uint8_t state[HWKeyboard::LED_NUMBER] = {0};
@@ -201,19 +201,25 @@ static void RenderLightEffect()
             {
                 lastDecayStar = tick;
 
-                if (fastRand() < 18)
+                if (fastRand() < 7)
                 {
                     uint8_t idx = fastRand() % HWKeyboard::LED_NUMBER;
+                    uint8_t cx, cy;
+                    getLedPos(idx, cx, cy);
+                    for (uint8_t j = 0; j < HWKeyboard::LED_NUMBER; j++)
+                    {
+                        uint8_t jx, jy;
+                        getLedPos(j, jx, jy);
+                        uint8_t d = approxDist(cx, cy, jx, jy);
+                        uint8_t b = d < 85 ? qsub8(200, (uint8_t)(d * 3)) : 0;
+                        if (b > state[j]) state[j] = b;
+                    }
                     state[idx] = 255;
-                    if (idx > 0 && state[idx - 1] < 128)
-                        state[idx - 1] = 160;
-                    if (idx < HWKeyboard::LED_NUMBER - 1 && state[idx + 1] < 128)
-                        state[idx + 1] = 160;
                 }
 
                 for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
                     if (state[i] > 0 && state[i] < 255)
-                        state[i] = qsub8(state[i], 1);
+                        state[i] = qsub8(state[i], 2);
             }
 
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
@@ -236,11 +242,11 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 4. Reactive: keys flash on press and fade (~1.2s) */
+        /* 4. Reactive: keys flash on press and fade (~0.8s) */
         case HWKeyboard::EFFECT_REACTIVE:
         {
             static uint32_t lastDecay = 0;
-            if (tick - lastDecay >= 5)
+            if (tick - lastDecay >= 3)
             {
                 lastDecay = tick;
                 for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
@@ -376,8 +382,8 @@ static void RenderLightEffect()
                 uint8_t px, py;
                 getLedPos(i, px, py);
 
-                uint16_t nx = (uint16_t) px * 3 + (uint16_t)(tick / 12);
-                uint16_t ny = (uint16_t) py * 5 + (uint16_t)(tick / 35);
+                uint16_t nx = (uint16_t) px * 3 + (uint16_t)(tick / 30);
+                uint16_t ny = (uint16_t) py * 5 + (uint16_t)(tick / 80);
                 uint8_t n = smoothNoise(nx, ny);
 
                 keyboard.SetRgbBufferByID(i, HsvToRgb(n, 240, 200));
