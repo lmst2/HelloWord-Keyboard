@@ -189,50 +189,30 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 3. Flame: fire simulation rising from bottom */
+        /* 3. Flame: noise-driven fire rising from bottom */
         case HWKeyboard::EFFECT_FLAME:
         {
-            static uint8_t heat[HWKeyboard::LED_NUMBER] = {0};
-            static uint32_t lastFireTick = 0;
-
-            if (tick - lastFireTick >= 12)
-            {
-                lastFireTick = tick;
-
-                static const uint8_t rowStart[] = {0, 14, 29, 44, 58, 72};
-                static const uint8_t rowLen[]   = {14, 15, 15, 14, 14, 10};
-
-                for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
-                    heat[i] = qsub8(heat[i], 4 + (fastRand() & 0x0F));
-
-                // Heat rises: each row pulls a small portion from the row below
-                for (uint8_t row = 0; row < 5; row++)
-                {
-                    for (uint8_t k = 0; k < rowLen[row]; k++)
-                    {
-                        uint8_t belowK = (uint8_t)((uint16_t)k * rowLen[row + 1] / rowLen[row]);
-                        uint8_t src = heat[rowStart[row + 1] + belowK];
-                        uint8_t& dst = heat[rowStart[row] + k];
-                        dst = (uint8_t)(((uint16_t)dst * 6 + (uint16_t)src * 2) >> 3);
-                    }
-                }
-
-                // Spark new flames only at bottom two rows
-                for (uint8_t i = 72; i < HWKeyboard::LED_NUMBER; i++)
-                {
-                    if (fastRand() < 120)
-                        heat[i] = qadd8(heat[i], 80 + (fastRand() % 175));
-                }
-            }
-
-            // Heat → fire color: black → red → orange → yellow → white
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
             {
-                uint8_t h = heat[i];
+                uint8_t px, py;
+                getLedPos(i, px, py);
+
+                // 3D noise scrolling upward → organic flame tongues
+                uint16_t nx = (uint16_t)px * 2;
+                uint16_t ny = (uint16_t)py * 3 - (uint16_t)(tick / 2);
+                uint16_t nz = (uint16_t)(tick / 9);
+                uint8_t n = valueNoise3D(nx, ny, nz);
+
+                // Noise-dominant heat with vertical bias (bottom = hotter)
+                int16_t h = (int16_t)n + (int16_t)n / 2 + (int16_t)py * 2 - 180;
+                if (h < 0) h = 0;
+                if (h > 255) h = 255;
+
+                uint8_t heat = (uint8_t)h;
                 uint8_t cr, cg, cb;
-                if (h < 85)       { cr = h * 3;  cg = 0;   cb = 0; }
-                else if (h < 170) { cr = 255;    cg = (uint8_t)((h - 85) * 3); cb = 0; }
-                else              { cr = 255;    cg = 255;  cb = (uint8_t)((h - 170) * 3); }
+                if (heat < 85)       { cr = heat * 3;  cg = 0;   cb = 0; }
+                else if (heat < 170) { cr = 255;    cg = (uint8_t)((heat - 85) * 3); cb = 0; }
+                else                 { cr = 255;    cg = 255;  cb = (uint8_t)((heat - 170) * 3); }
                 keyboard.SetRgbBufferByID(i, {cr, cg, cb});
             }
             break;
