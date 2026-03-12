@@ -54,6 +54,38 @@ void HWKeyboard::ApplyDebounceFilter(uint32_t _filterTimeUs)
 }
 
 
+void HWKeyboard::ApplyKeyDebounce(uint8_t _cycles)
+{
+    static uint8_t stableState[IO_NUMBER / 8 + 1];
+    static uint8_t counter[IO_NUMBER / 8 + 1] = {0};
+    static bool init = false;
+
+    if (!init)
+    {
+        memcpy(stableState, spiBuffer, IO_NUMBER / 8 + 1);
+        init = true;
+    }
+
+    for (uint8_t i = 0; i < IO_NUMBER / 8 + 1; i++)
+    {
+        if (spiBuffer[i] != stableState[i])
+        {
+            counter[i]++;
+            if (counter[i] >= _cycles)
+            {
+                stableState[i] = spiBuffer[i];
+                counter[i] = 0;
+            }
+        } else
+        {
+            counter[i] = 0;
+        }
+    }
+
+    memcpy(spiBuffer, stableState, IO_NUMBER / 8 + 1);
+}
+
+
 uint8_t* HWKeyboard::Remap(uint8_t _layer)
 {
     int16_t index, bitIndex;

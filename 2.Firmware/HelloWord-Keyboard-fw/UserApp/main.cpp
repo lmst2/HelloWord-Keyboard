@@ -537,7 +537,8 @@ void Main()
 extern "C" void OnTimerCallback() // 1000Hz callback
 {
     keyboard.ScanKeyStates();
-    keyboard.ApplyDebounceFilter(5000);
+    keyboard.ApplyDebounceFilter(100);
+    keyboard.ApplyKeyDebounce(8);
 
     bool fnPressed = keyboard.FnPressed();
     keyboard.Remap(1);

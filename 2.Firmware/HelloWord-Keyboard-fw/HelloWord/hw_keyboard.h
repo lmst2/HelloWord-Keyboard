@@ -85,6 +85,7 @@ public:
 
     uint8_t* ScanKeyStates();
     void ApplyDebounceFilter(uint32_t _filterTimeUs = 100);
+    void ApplyKeyDebounce(uint8_t _cycles = 8);
     uint8_t* Remap(uint8_t _layer = 1);
     void SyncLights();
     bool FnPressed();
