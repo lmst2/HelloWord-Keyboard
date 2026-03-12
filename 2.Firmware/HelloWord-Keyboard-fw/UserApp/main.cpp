@@ -76,52 +76,6 @@ static inline uint8_t qsub8(uint8_t a, uint8_t b)
 }
 
 
-/* Noise utilities for contour effect ----------------------------------------*/
-static uint8_t noisePerm(uint8_t x)
-{
-    static const uint8_t p[] = {
-        151,160,137, 91, 90, 15,131, 13,201, 95, 96, 53,194,233,  7,225,
-        140, 36,103, 30, 69,142,  8, 99, 37,240, 21, 10, 23,190,  6,148,
-        247,120,234, 75,  0, 26,197, 62, 94,252,219,203,117, 35, 11, 32,
-         65,195, 76,204, 98, 57,227,186,132, 83,158, 87,144, 41, 82,167
-    };
-    return p[x & 0x3F];
-}
-
-
-static uint8_t noiseHash2D(uint8_t x, uint8_t y)
-{
-    return noisePerm(noisePerm(x) + y);
-}
-
-
-static uint8_t lerp8(uint8_t a, uint8_t b, uint8_t t)
-{
-    return (uint8_t)(((uint32_t) a * (256 - t) + (uint32_t) b * t) >> 8);
-}
-
-
-static uint8_t smoothNoise(uint16_t x, uint16_t y)
-{
-    uint8_t ix = x >> 8;
-    uint8_t iy = y >> 8;
-    uint8_t fx = x & 0xFF;
-    uint8_t fy = y & 0xFF;
-
-    uint16_t fx2 = ((uint16_t) fx * fx) >> 8;
-    uint8_t sfx = (uint8_t)(3 * fx2 - 2 * ((fx2 * (uint16_t) fx) >> 8));
-    uint16_t fy2 = ((uint16_t) fy * fy) >> 8;
-    uint8_t sfy = (uint8_t)(3 * fy2 - 2 * ((fy2 * (uint16_t) fy) >> 8));
-
-    uint8_t v00 = noiseHash2D(ix, iy);
-    uint8_t v10 = noiseHash2D(ix + 1, iy);
-    uint8_t v01 = noiseHash2D(ix, iy + 1);
-    uint8_t v11 = noiseHash2D(ix + 1, iy + 1);
-
-    return lerp8(lerp8(v00, v10, sfx), lerp8(v01, v11, sfx), sfy);
-}
-
-
 /* Ripple utilities ----------------------------------------------------------*/
 static void getLedPos(uint8_t idx, uint8_t& x, uint8_t& y)
 {
@@ -374,26 +328,31 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 7. Contour: domain-warped noise field morphing in place */
+        /* 7. Contour: slowly morphing broad color field with organic warping */
         case HWKeyboard::EFFECT_CONTOUR:
         {
+            uint8_t t1 = (uint8_t)(tick / 60);
+            uint8_t t2 = (uint8_t)(tick / 78);
+            uint8_t t3 = (uint8_t)(tick / 70);
+            uint8_t t4 = (uint8_t)(tick / 47);
+
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
             {
                 uint8_t px, py;
                 getLedPos(i, px, py);
 
-                uint8_t wx = smoothNoise(
-                    (uint16_t) px * 2 + (uint16_t)(tick / 40),
-                    (uint16_t) py * 3 + (uint16_t)(tick / 100));
-                uint8_t wy = smoothNoise(
-                    (uint16_t) px * 2 + 5000 + (uint16_t)(tick / 55),
-                    (uint16_t) py * 3 + 8000 + (uint16_t)(tick / 80));
+                uint8_t warp_x = sin8((uint8_t)(py / 2 + t3)) >> 4;
+                uint8_t warp_y = sin8((uint8_t)(px / 3 + t4)) >> 4;
+                uint8_t wpx = px / 3 + warp_x;
+                uint8_t wpy = py + warp_y;
 
-                uint16_t nx = (uint16_t) px * 3 + wx;
-                uint16_t ny = (uint16_t) py * 5 + wy;
-                uint8_t n = smoothNoise(nx, ny);
+                uint8_t h1 = sin8((uint8_t)(wpx + t1));
+                uint8_t h2 = sin8((uint8_t)(wpy + t2));
+                uint8_t h3 = sin8((uint8_t)(wpx + wpy + t3));
+                uint8_t hue = (uint8_t)(((uint16_t)h1 + h2 + h3) / 3);
 
-                keyboard.SetRgbBufferByID(i, HsvToRgb(n, 240, 200));
+                uint8_t val = 180 + (sin8((uint8_t)(px / 4 + py / 2 + t4)) >> 2);
+                keyboard.SetRgbBufferByID(i, HsvToRgb(hue, 230, val));
             }
             break;
         }
