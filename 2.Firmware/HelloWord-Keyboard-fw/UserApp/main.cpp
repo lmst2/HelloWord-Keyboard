@@ -174,7 +174,7 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 2. Rainbow Sweep: full-keyboard rainbow flowing horizontally */
+        /* 2. Rainbow Sweep: full-keyboard rainbow flowing right-to-left */
         case HWKeyboard::EFFECT_RAINBOW_SWEEP:
         {
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
@@ -182,9 +182,9 @@ static void RenderLightEffect()
                 uint8_t px, py;
                 getLedPos(i, px, py);
 
-                uint8_t hue = (uint8_t)(px + tick / 8);
+                uint8_t hue = (uint8_t)(px - tick / 8);
                 uint8_t brightWave = sin8((uint8_t)(tick / 18 + px / 3));
-                uint8_t val = 215 + (brightWave >> 3);
+                uint8_t val = 178 + (uint8_t)(((uint16_t) brightWave * 77) >> 8);
 
                 keyboard.SetRgbBufferByID(i, HsvToRgb(hue, 255, val));
             }
@@ -201,7 +201,7 @@ static void RenderLightEffect()
             {
                 lastDecayStar = tick;
 
-                if (fastRand() < 40)
+                if (fastRand() < 18)
                 {
                     uint8_t idx = fastRand() % HWKeyboard::LED_NUMBER;
                     state[idx] = 255;
@@ -236,11 +236,11 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 4. Reactive: keys flash on press and fade slowly (~2s) */
+        /* 4. Reactive: keys flash on press and fade (~1.2s) */
         case HWKeyboard::EFFECT_REACTIVE:
         {
             static uint32_t lastDecay = 0;
-            if (tick - lastDecay >= 8)
+            if (tick - lastDecay >= 5)
             {
                 lastDecay = tick;
                 for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
@@ -292,7 +292,7 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 6. Digital Rain: drops fall top-to-bottom with fading trail */
+        /* 6. Digital Rain: drops fall top-to-bottom, one LED per row */
         case HWKeyboard::EFFECT_DIGITAL_RAIN:
         {
             static const uint8_t MAX_DROPS = 8;
@@ -300,7 +300,7 @@ static void RenderLightEffect()
             static uint8_t dropActive = 0;
             static uint32_t lastRainTick = 0;
 
-            if (tick - lastRainTick >= 25)
+            if (tick - lastRainTick >= 30)
             {
                 lastRainTick = tick;
                 for (uint8_t d = 0; d < MAX_DROPS; d++)
@@ -308,18 +308,21 @@ static void RenderLightEffect()
                     if (dropActive & (1 << d))
                     {
                         drops[d].y += drops[d].speed;
-                        if (drops[d].y > 140) dropActive &= ~(1 << d);
+                        if (drops[d].y > 150) dropActive &= ~(1 << d);
                     }
                 }
-                if (fastRand() < 70)
+                if (fastRand() < 60)
                 {
                     for (uint8_t d = 0; d < MAX_DROPS; d++)
                     {
                         if (!(dropActive & (1 << d)))
                         {
-                            drops[d].x = (uint8_t)(((uint16_t) fastRand() * 240) >> 8);
+                            uint8_t refLed = fastRand() % 15;
+                            uint8_t rx, ry;
+                            getLedPos(14 + refLed, rx, ry);
+                            drops[d].x = rx;
                             drops[d].y = 0;
-                            drops[d].speed = 2 + (fastRand() & 3);
+                            drops[d].speed = 3 + (fastRand() & 1);
                             dropActive |= (1 << d);
                             break;
                         }
@@ -338,24 +341,22 @@ static void RenderLightEffect()
                 {
                     if (!(dropActive & (1 << d))) continue;
                     uint8_t dx = px > drops[d].x ? px - drops[d].x : drops[d].x - px;
-                    if (dx > 14) continue;
+                    if (dx > 8) continue;
 
                     int16_t dy = drops[d].y - (int16_t) py;
-                    if (dy < -5 || dy > 70) continue;
+                    if (dy < -2 || dy > 80) continue;
 
-                    uint8_t colMatch = (uint8_t)(255 - dx * 18);
                     uint8_t green;
                     if (dy < 0) { green = 0; }
-                    else if (dy < 8)
+                    else if (dy < 4)
                     {
                         green = 255;
-                        uint8_t w = (uint8_t)((8 - dy) * 25);
+                        uint8_t w = (uint8_t)((4 - dy) * 50);
                         if (w > bestWhite) bestWhite = w;
                     } else
                     {
-                        green = qsub8(255, (uint8_t)((dy - 8) * 4));
+                        green = qsub8(255, (uint8_t)((dy - 4) * 3));
                     }
-                    green = (uint8_t)(((uint16_t) green * colMatch) >> 8);
                     if (green > bestGreen) bestGreen = green;
                 }
 
@@ -375,14 +376,11 @@ static void RenderLightEffect()
                 uint8_t px, py;
                 getLedPos(i, px, py);
 
-                uint16_t nx = (uint16_t) px * 3 + (uint16_t)(tick / 20);
-                uint16_t ny = (uint16_t) py * 5 + (uint16_t)(tick / 60);
+                uint16_t nx = (uint16_t) px * 3 + (uint16_t)(tick / 12);
+                uint16_t ny = (uint16_t) py * 5 + (uint16_t)(tick / 35);
                 uint8_t n = smoothNoise(nx, ny);
 
-                uint8_t hue = n;
-                uint8_t val = 160 + (sin8(n) >> 2);
-
-                keyboard.SetRgbBufferByID(i, HsvToRgb(hue, 230, val));
+                keyboard.SetRgbBufferByID(i, HsvToRgb(n, 240, 200));
             }
             break;
         }
@@ -539,7 +537,7 @@ void Main()
 extern "C" void OnTimerCallback() // 1000Hz callback
 {
     keyboard.ScanKeyStates();
-    keyboard.ApplyDebounceFilter(100);
+    keyboard.ApplyDebounceFilter(5000);
 
     bool fnPressed = keyboard.FnPressed();
     keyboard.Remap(1);

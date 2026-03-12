@@ -19,9 +19,13 @@ except ImportError:
     print("[ERROR] 'hidapi' package required: pip install hidapi")
     sys.exit(1)
 
-VID = 0x1001
-PID = 0xB007
-USAGE_PAGE = 0xFF00
+BL_VID = 0x1001
+BL_PID = 0xB007
+BL_USAGE_PAGE = 0xFF00
+
+KBD_VID = 0x1001
+KBD_PID = 0xF103
+KBD_RAW_HID_USAGE_PAGE = 0xFFC0
 
 CMD_INFO   = 0x01
 CMD_ERASE  = 0x02
@@ -46,11 +50,11 @@ STATUS_NAMES = {
 }
 
 
-def open_device():
-    devs = hid.enumerate(VID, PID)
+def open_bootloader():
+    devs = hid.enumerate(BL_VID, BL_PID)
     path = None
     for d in devs:
-        if d["usage_page"] == USAGE_PAGE:
+        if d["usage_page"] == BL_USAGE_PAGE:
             path = d["path"]
             break
     if not path and devs:
@@ -60,6 +64,34 @@ def open_device():
     dev = hid.device()
     dev.open_path(path)
     return dev
+
+
+def reset_keyboard_to_bootloader():
+    """Send DFU reset command to keyboard firmware, return True if sent."""
+    devs = hid.enumerate(KBD_VID, KBD_PID)
+    path = None
+    for d in devs:
+        if d["usage_page"] == KBD_RAW_HID_USAGE_PAGE:
+            path = d["path"]
+            break
+    if not path:
+        return False
+    dev = hid.device()
+    dev.open_path(path)
+    dev.write([0x02, 0xDF] + [0x00] * 31)
+    dev.close()
+    return True
+
+
+def wait_for_bootloader(timeout=5.0):
+    """Poll until bootloader enumerates or timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        dev = open_bootloader()
+        if dev:
+            return dev
+        time.sleep(0.3)
+    return None
 
 
 def send(dev, payload, timeout_ms=5000):
@@ -139,15 +171,22 @@ def main():
     print(f"[INFO] Firmware: {bin_path} ({len(firmware)} bytes)")
 
     print("[INFO] Searching for HW75 bootloader...")
-    dev = open_device()
+    dev = open_bootloader()
+
     if not dev:
-        print(f"[ERROR] Device not found (VID=0x{VID:04X} PID=0x{PID:04X})")
-        print("\nAvailable HID devices:")
-        for d in hid.enumerate():
-            print(f"  VID=0x{d['vendor_id']:04X} PID=0x{d['product_id']:04X} "
-                  f"usage=0x{d['usage_page']:04X}:0x{d['usage']:04X} "
-                  f"- {d['product_string']}")
-        sys.exit(1)
+        print("[INFO] Bootloader not found, looking for keyboard in normal mode...")
+        if reset_keyboard_to_bootloader():
+            print("[INFO] Reset command sent, waiting for bootloader...", end="", flush=True)
+            dev = wait_for_bootloader()
+            print(" OK" if dev else " timeout")
+        if not dev:
+            print(f"[ERROR] No keyboard or bootloader found")
+            print("\nAvailable HID devices:")
+            for d in hid.enumerate():
+                print(f"  VID=0x{d['vendor_id']:04X} PID=0x{d['product_id']:04X} "
+                      f"usage=0x{d['usage_page']:04X}:0x{d['usage']:04X} "
+                      f"- {d['product_string']}")
+            sys.exit(1)
 
     try:
         app_size, page_size, ver_major, ver_minor = get_info(dev)

@@ -249,16 +249,25 @@ void HWKeyboard::NextEffect()
 
 void HWKeyboard::UpdateKeyPressState()
 {
+    static uint8_t stableCount[KEY_NUMBER] = {0};
+
     for (uint8_t i = 0; i < KEY_NUMBER; i++)
     {
         if (remapBuffer[i / 8] & (0x80 >> (i % 8)))
         {
-            // WS2812B chain snakes: rows 0,2,4 are wired right-to-left
-            uint8_t led = i;
-            if (i < 14)                    led = 13 - i;
-            else if (i >= 29 && i < 44)    led = 72 - i;
-            else if (i >= 58 && i < 72)    led = 129 - i;
-            keyBrightness[led] = 255;
+            if (stableCount[i] < 255) stableCount[i]++;
+            if (stableCount[i] >= 3)
+            {
+                uint8_t led = i;
+                if (i < 14)                    led = 13 - i;
+                else if (i >= 29 && i < 44)    led = 72 - i;
+                else if (i >= 58 && i < 72)    led = 129 - i;
+                keyBrightness[led] = 255;
+            }
+        }
+        else
+        {
+            stableCount[i] = 0;
         }
     }
 }
