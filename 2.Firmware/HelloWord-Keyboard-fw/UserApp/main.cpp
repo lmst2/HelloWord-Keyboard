@@ -374,7 +374,7 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 7. Contour: large smooth flowing color regions */
+        /* 7. Contour: domain-warped noise field morphing in place */
         case HWKeyboard::EFFECT_CONTOUR:
         {
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
@@ -382,8 +382,15 @@ static void RenderLightEffect()
                 uint8_t px, py;
                 getLedPos(i, px, py);
 
-                uint16_t nx = (uint16_t) px * 3 + (uint16_t)(tick / 30);
-                uint16_t ny = (uint16_t) py * 5 + (uint16_t)(tick / 80);
+                uint8_t wx = smoothNoise(
+                    (uint16_t) px * 2 + (uint16_t)(tick / 40),
+                    (uint16_t) py * 3 + (uint16_t)(tick / 100));
+                uint8_t wy = smoothNoise(
+                    (uint16_t) px * 2 + 5000 + (uint16_t)(tick / 55),
+                    (uint16_t) py * 3 + 8000 + (uint16_t)(tick / 80));
+
+                uint16_t nx = (uint16_t) px * 3 + wx;
+                uint16_t ny = (uint16_t) py * 5 + wy;
                 uint8_t n = smoothNoise(nx, ny);
 
                 keyboard.SetRgbBufferByID(i, HsvToRgb(n, 240, 200));
