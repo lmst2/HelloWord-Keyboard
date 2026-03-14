@@ -94,6 +94,7 @@ public:
     void SetMouseWheel(int8_t _wheel);
     void ClearMouseReport();
     void SetRgbBufferByID(uint8_t _keyId, Color_t _color, float _brightness = 1);
+    void SetRgbBufferRawByID(uint8_t _keyId, Color_t _color);
     void ApplyStoredRgbByID(uint8_t _keyId, float _brightness = 1);
     void TurnOffRgbOutputByID(uint8_t _keyId);
 
@@ -151,6 +152,7 @@ private:
     uint8_t wsCommit[64] = {0};
     uint8_t brightnessPreDiv = 2;
 
+    void WriteEncodedRgbByID(uint8_t _keyId, uint8_t _red, uint8_t _green, uint8_t _blue);
     void EncodeRgbBufferByID(uint8_t _keyId, Color_t _color, float _brightness);
 };
 

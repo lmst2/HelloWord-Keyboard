@@ -90,7 +90,7 @@ static const uint32_t TOUCHBAR_DESKTOP_STEP_INTERVAL_MS = 500;
 static const uint32_t STATUS_BLINK_PHASE_MS = 120;
 static const uint32_t SLEEP_IDLE_TIMEOUT_MS = 300000;
 static const uint32_t SLEEP_FADE_OUT_MS = 800;
-static const uint32_t SLEEP_BREATHE_PERIOD_MS = 1200;
+static const uint32_t SLEEP_BREATHE_PERIOD_MS = 2400;
 static const int16_t TOUCHBAR_POSITION_SCALE = 256;
 static const int16_t TOUCHBAR_DESKTOP_SWIPE_DISTANCE = 96;
 static const int16_t TOUCHBAR_EDGE_REPEAT_THRESHOLD = 64;
@@ -98,8 +98,8 @@ static const int16_t TOUCHBAR_PAN_DEADZONE = 64;
 static const int16_t TOUCHBAR_STEP_DISTANCE = 160;
 static const int16_t TOUCHBAR_DESKTOP_STEP_DISTANCE = 192;
 static const uint8_t SYNTHETIC_PULSE_FRAMES = 2;
-static const float SLEEP_STATUS_MIN_BRIGHTNESS = 0.04f;
-static const float SLEEP_STATUS_MAX_BRIGHTNESS = 0.14f;
+static const uint16_t SLEEP_PULSE_RESOLUTION = 1024;
+static const uint8_t SLEEP_STATUS_MAX_RAW_BRIGHTNESS = 48;
 
 
 /* Utility Functions ---------------------------------------------------------*/
@@ -257,12 +257,26 @@ static float GetSleepFadeScale(uint32_t nowMs)
 }
 
 
-static float GetSleepPulseBrightness(uint32_t nowMs)
+static uint16_t GetSleepPulseLevel(uint32_t nowMs)
 {
+    const uint32_t halfPeriodMs = SLEEP_BREATHE_PERIOD_MS / 2U;
     const uint32_t phaseMs = nowMs % SLEEP_BREATHE_PERIOD_MS;
-    const uint8_t wave = sin8((uint8_t) (((phaseMs * 256UL) / SLEEP_BREATHE_PERIOD_MS) + 192UL));
-    return SLEEP_STATUS_MIN_BRIGHTNESS +
-           ((float) wave / 255.0f) * (SLEEP_STATUS_MAX_BRIGHTNESS - SLEEP_STATUS_MIN_BRIGHTNESS);
+    const uint32_t rampMs = phaseMs < halfPeriodMs ? phaseMs : (SLEEP_BREATHE_PERIOD_MS - phaseMs);
+    const uint32_t x = (rampMs * SLEEP_PULSE_RESOLUTION) / halfPeriodMs;
+
+    // Use a smoothstep curve, then square it once more to dwell longer near off.
+    const uint32_t smooth = (x * x * (3U * SLEEP_PULSE_RESOLUTION - 2U * x) +
+                             (uint32_t) SLEEP_PULSE_RESOLUTION * SLEEP_PULSE_RESOLUTION / 2U) /
+                            ((uint32_t) SLEEP_PULSE_RESOLUTION * SLEEP_PULSE_RESOLUTION);
+    return (uint16_t) ((smooth * smooth + SLEEP_PULSE_RESOLUTION / 2U) / SLEEP_PULSE_RESOLUTION);
+}
+
+
+static uint8_t GetSleepPulseRawBrightness(uint32_t nowMs)
+{
+    const uint16_t pulseLevel = GetSleepPulseLevel(nowMs);
+    return (uint8_t) ((pulseLevel * SLEEP_STATUS_MAX_RAW_BRIGHTNESS + SLEEP_PULSE_RESOLUTION / 2U) /
+                      SLEEP_PULSE_RESOLUTION);
 }
 
 
@@ -879,10 +893,15 @@ static void UpdateStatusLEDs(uint32_t nowMs)
 
     if (sleepState.isSleeping)
     {
-        const HWKeyboard::Color_t sleepColor{255, 255, 255};
-        const float sleepBrightness = GetSleepPulseBrightness(nowMs);
+        const uint8_t sleepBrightness = GetSleepPulseRawBrightness(nowMs);
         for (uint8_t i = 0; i < STATUS_LED_COUNT; i++)
-            keyboard.SetRgbBufferByID(STATUS_LED_START + i, sleepColor, sleepBrightness);
+        {
+            if (sleepBrightness == 0)
+                keyboard.TurnOffRgbOutputByID(STATUS_LED_START + i);
+            else
+                keyboard.SetRgbBufferRawByID(STATUS_LED_START + i,
+                                             HWKeyboard::Color_t{sleepBrightness, sleepBrightness, sleepBrightness});
+        }
         return;
     }
 

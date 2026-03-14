@@ -136,6 +136,17 @@ bool HWKeyboard::FnPressed()
 }
 
 
+void HWKeyboard::WriteEncodedRgbByID(uint8_t _keyId, uint8_t _red, uint8_t _green, uint8_t _blue)
+{
+    for (int i = 0; i < 8; i++)
+    {
+        rgbBuffer[_keyId][0][i] = (_green & (0x80 >> i)) ? WS_HIGH : WS_LOW;
+        rgbBuffer[_keyId][1][i] = (_red & (0x80 >> i)) ? WS_HIGH : WS_LOW;
+        rgbBuffer[_keyId][2][i] = (_blue & (0x80 >> i)) ? WS_HIGH : WS_LOW;
+    }
+}
+
+
 void HWKeyboard::EncodeRgbBufferByID(uint8_t _keyId, HWKeyboard::Color_t _color, float _brightness)
 {
     if (_brightness <= 0.0f || (_color.r == 0 && _color.g == 0 && _color.b == 0))
@@ -150,13 +161,7 @@ void HWKeyboard::EncodeRgbBufferByID(uint8_t _keyId, HWKeyboard::Color_t _color,
     const uint8_t green = (uint8_t) ((float) _color.g * _brightness) >> brightnessPreDiv;
     const uint8_t red = (uint8_t) ((float) _color.r * _brightness) >> brightnessPreDiv;
     const uint8_t blue = (uint8_t) ((float) _color.b * _brightness) >> brightnessPreDiv;
-
-    for (int i = 0; i < 8; i++)
-    {
-        rgbBuffer[_keyId][0][i] = (green & (0x80 >> i)) ? WS_HIGH : WS_LOW;
-        rgbBuffer[_keyId][1][i] = (red & (0x80 >> i)) ? WS_HIGH : WS_LOW;
-        rgbBuffer[_keyId][2][i] = (blue & (0x80 >> i)) ? WS_HIGH : WS_LOW;
-    }
+    WriteEncodedRgbByID(_keyId, red, green, blue);
 }
 
 
@@ -164,6 +169,20 @@ void HWKeyboard::SetRgbBufferByID(uint8_t _keyId, HWKeyboard::Color_t _color, fl
 {
     ledColors[_keyId] = _color;
     EncodeRgbBufferByID(_keyId, _color, _brightness);
+}
+
+
+void HWKeyboard::SetRgbBufferRawByID(uint8_t _keyId, HWKeyboard::Color_t _color)
+{
+    if (_color.r == 0 && _color.g == 0 && _color.b == 0)
+    {
+        TurnOffRgbOutputByID(_keyId);
+        return;
+    }
+
+    // Keep the same blue-channel safeguard for non-zero frames.
+    if (_color.b < 1) _color.b = 1;
+    WriteEncodedRgbByID(_keyId, _color.r, _color.g, _color.b);
 }
 
 
