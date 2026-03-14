@@ -28,18 +28,6 @@ static uint8_t sin8(uint8_t theta)
 }
 
 
-static uint16_t prngState = 0;
-
-static uint8_t fastRand()
-{
-    if (prngState == 0) prngState = (uint16_t) HAL_GetTick() | 1;
-    prngState ^= prngState << 7;
-    prngState ^= prngState >> 9;
-    prngState ^= prngState << 8;
-    return (uint8_t)(prngState >> 8);
-}
-
-
 static HWKeyboard::Color_t HsvToRgb(uint8_t h, uint8_t s, uint8_t v)
 {
     if (s == 0) return {v, v, v};
@@ -120,7 +108,7 @@ static uint8_t valueNoise3D(uint16_t x, uint16_t y, uint16_t z)
 }
 
 
-/* Ripple utilities ----------------------------------------------------------*/
+/* LED position utilities ----------------------------------------------------*/
 static void getLedPos(uint8_t idx, uint8_t& x, uint8_t& y)
 {
     // WS2812B chain snakes: rows 0,2,4 are wired right-to-left
@@ -140,14 +128,6 @@ static void getLedPos(uint8_t idx, uint8_t& x, uint8_t& y)
 }
 
 
-static uint8_t approxDist(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2)
-{
-    uint8_t dx = x1 > x2 ? x1 - x2 : x2 - x1;
-    uint8_t dy = y1 > y2 ? y1 - y2 : y2 - y1;
-    return dx > dy ? dx + ((dy * 3) >> 3) : dy + ((dx * 3) >> 3);
-}
-
-
 /* Light Effects -------------------------------------------------------------*/
 static void RenderLightEffect()
 {
@@ -162,17 +142,7 @@ static void RenderLightEffect()
 
     switch (keyboard.currentEffect)
     {
-        /* 1. Breathing: warm amber pulse */
-        case HWKeyboard::EFFECT_BREATHING:
-        {
-            uint32_t phase = (tick / 6) % 510;
-            uint8_t val = phase < 255 ? (uint8_t) phase : (uint8_t)(510 - phase);
-            for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
-                keyboard.SetRgbBufferByID(i, {val, (uint8_t)(val / 5), (uint8_t)(val / 12)});
-            break;
-        }
-
-        /* 2. Rainbow Sweep: full-keyboard rainbow with faster brightness wave */
+        /* Rainbow Sweep: full-keyboard rainbow with faster brightness wave */
         case HWKeyboard::EFFECT_RAINBOW_SWEEP:
         {
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
@@ -189,36 +159,7 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 3. Flame: noise-driven fire rising from bottom */
-        case HWKeyboard::EFFECT_FLAME:
-        {
-            static HWKeyboard::Color_t buf[HWKeyboard::LED_NUMBER];
-            uint16_t nyBase = -(uint16_t)(tick / 2);
-            uint16_t nz = (uint16_t)(tick / 9);
-
-            for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
-            {
-                uint8_t px, py;
-                getLedPos(i, px, py);
-
-                uint8_t n = valueNoise3D((uint16_t)px * 2, (uint16_t)py * 3 + nyBase, nz);
-
-                int16_t h = (int16_t)n + (int16_t)n / 2 + (int16_t)py * 2 - 180;
-                if (h < 0) h = 0;
-                if (h > 255) h = 255;
-
-                uint8_t heat = (uint8_t)h;
-                if (heat < 85)       buf[i] = {(uint8_t)(heat * 3), 0, 0};
-                else if (heat < 170) buf[i] = {255, (uint8_t)((heat - 85) * 3), 0};
-                else                 buf[i] = {255, 255, (uint8_t)((heat - 170) * 3)};
-            }
-
-            for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
-                keyboard.SetRgbBufferByID(i, buf[i]);
-            break;
-        }
-
-        /* 4. Reactive: keys flash on press and fade (~0.8s) */
+        /* Reactive: keys flash on press and fade (~0.8s) */
         case HWKeyboard::EFFECT_REACTIVE:
         {
             static uint32_t lastDecay = 0;
@@ -245,7 +186,7 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 5. Aurora: multi-layered flowing ocean waves (Pacifica-inspired) */
+        /* Aurora: multi-layered flowing ocean waves (Pacifica-inspired) */
         case HWKeyboard::EFFECT_AURORA:
         {
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
@@ -274,83 +215,7 @@ static void RenderLightEffect()
             break;
         }
 
-        /* 6. Digital Rain: drops fall top-to-bottom, one LED per row */
-        case HWKeyboard::EFFECT_DIGITAL_RAIN:
-        {
-            static const uint8_t MAX_DROPS = 8;
-            static struct { uint8_t x; int16_t y; uint8_t speed; } drops[MAX_DROPS] = {};
-            static uint8_t dropActive = 0;
-            static uint32_t lastRainTick = 0;
-
-            if (tick - lastRainTick >= 30)
-            {
-                lastRainTick = tick;
-                for (uint8_t d = 0; d < MAX_DROPS; d++)
-                {
-                    if (dropActive & (1 << d))
-                    {
-                        drops[d].y += drops[d].speed;
-                        if (drops[d].y > 150) dropActive &= ~(1 << d);
-                    }
-                }
-                if (fastRand() < 60)
-                {
-                    for (uint8_t d = 0; d < MAX_DROPS; d++)
-                    {
-                        if (!(dropActive & (1 << d)))
-                        {
-                            uint8_t refLed = fastRand() % 15;
-                            uint8_t rx, ry;
-                            getLedPos(14 + refLed, rx, ry);
-                            drops[d].x = rx;
-                            drops[d].y = 0;
-                            drops[d].speed = 3 + (fastRand() & 1);
-                            dropActive |= (1 << d);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
-            {
-                uint8_t px, py;
-                getLedPos(i, px, py);
-                uint8_t bestGreen = 0;
-                uint8_t bestWhite = 0;
-
-                for (uint8_t d = 0; d < MAX_DROPS; d++)
-                {
-                    if (!(dropActive & (1 << d))) continue;
-                    uint8_t dx = px > drops[d].x ? px - drops[d].x : drops[d].x - px;
-                    if (dx > 8) continue;
-
-                    int16_t dy = drops[d].y - (int16_t) py;
-                    if (dy < -2 || dy > 80) continue;
-
-                    uint8_t green;
-                    if (dy < 0) { green = 0; }
-                    else if (dy < 4)
-                    {
-                        green = 255;
-                        uint8_t w = (uint8_t)((4 - dy) * 50);
-                        if (w > bestWhite) bestWhite = w;
-                    } else
-                    {
-                        green = qsub8(255, (uint8_t)((dy - 4) * 3));
-                    }
-                    if (green > bestGreen) bestGreen = green;
-                }
-
-                if (bestGreen > 0 || bestWhite > 0)
-                    keyboard.SetRgbBufferByID(i, {bestWhite, qadd8(bestGreen, bestWhite), (uint8_t)(bestGreen / 8)});
-                else
-                    keyboard.SetRgbBufferByID(i, {0, 0, 1});
-            }
-            break;
-        }
-
-        /* 7. Contour: 3D value noise field, time as z-dimension */
+        /* Contour: 3D value noise field, time as z-dimension */
         case HWKeyboard::EFFECT_CONTOUR:
         {
             uint16_t tz = (uint16_t)(tick / 78);
@@ -369,87 +234,6 @@ static void RenderLightEffect()
                 uint8_t n = valueNoise3D(nx, ny, tz);
                 keyboard.SetRgbBufferByID(i, HsvToRgb(n, 240, 200));
             }
-            break;
-        }
-
-        /* 8. Ripple: colorful rings expand from pressed keys */
-        case HWKeyboard::EFFECT_RIPPLE:
-        {
-            static const uint8_t MAX_RIPPLES = 10;
-            static const uint16_t RIPPLE_LIFE = 1000;
-            static const uint8_t RING_WIDTH = 22;
-
-            static struct { uint8_t x, y; uint16_t startTick; } ripples[MAX_RIPPLES];
-            static uint8_t nextSlot = 0;
-            static uint8_t prevPressed[11] = {0};
-            static uint32_t lastDecay = 0;
-
-            if (tick - lastDecay >= 3)
-            {
-                lastDecay = tick;
-                for (uint8_t k = 0; k < HWKeyboard::KEY_NUMBER; k++)
-                    keyboard.keyBrightness[k] = qsub8(keyboard.keyBrightness[k], 10);
-            }
-
-            for (uint8_t k = 0; k < HWKeyboard::KEY_NUMBER; k++)
-            {
-                bool now = keyboard.keyBrightness[k] > 200;
-                bool was = prevPressed[k >> 3] & (1 << (k & 7));
-                if (now && !was)
-                {
-                    uint8_t px, py;
-                    getLedPos(k, px, py);
-                    ripples[nextSlot % MAX_RIPPLES] = {px, py, (uint16_t) tick};
-                    nextSlot++;
-                }
-                if (now) prevPressed[k >> 3] |= (1 << (k & 7));
-                else     prevPressed[k >> 3] &= ~(1 << (k & 7));
-            }
-
-            for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
-            {
-                uint8_t px, py;
-                getLedPos(i, px, py);
-
-                uint8_t bestBright = 0;
-                uint8_t bestHue = 0;
-
-                uint8_t count = nextSlot < MAX_RIPPLES ? nextSlot : MAX_RIPPLES;
-                for (uint8_t r = 0; r < count; r++)
-                {
-                    uint16_t elapsed = (uint16_t) tick - ripples[r].startTick;
-                    if (elapsed > RIPPLE_LIFE) continue;
-
-                    uint8_t radius = (uint8_t)((elapsed * 65) >> 8);
-                    uint8_t dist = approxDist(px, py, ripples[r].x, ripples[r].y);
-                    int16_t ringDelta = (int16_t) dist - radius;
-                    if (ringDelta < 0) ringDelta = -ringDelta;
-                    if (ringDelta >= RING_WIDTH) continue;
-
-                    uint8_t ring = (uint8_t)((RING_WIDTH - ringDelta) * (255 / RING_WIDTH));
-                    uint8_t fade = 255 - (uint8_t)(((uint32_t) elapsed * 65) >> 8);
-                    uint8_t bright = (uint8_t)(((uint16_t) ring * fade) >> 8);
-
-                    if (bright > bestBright)
-                    {
-                        bestBright = bright;
-                        bestHue = (uint8_t)(ripples[r].x + ripples[r].y * 2 + elapsed / 6);
-                    }
-                }
-
-                if (bestBright > 0)
-                    keyboard.SetRgbBufferByID(i, HsvToRgb(bestHue, 255, bestBright));
-                else
-                    keyboard.SetRgbBufferByID(i, {0, 0, 1});
-            }
-            break;
-        }
-
-        /* 9. Static: warm white */
-        case HWKeyboard::EFFECT_STATIC:
-        {
-            for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
-                keyboard.SetRgbBufferByID(i, {255, 180, 80});
             break;
         }
 
@@ -544,26 +328,16 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (keyboard.KeyPressed(HWKeyboard::NUM_2))        curFnCombo |= 0x010;
         if (keyboard.KeyPressed(HWKeyboard::NUM_3))        curFnCombo |= 0x020;
         if (keyboard.KeyPressed(HWKeyboard::NUM_4))        curFnCombo |= 0x040;
-        if (keyboard.KeyPressed(HWKeyboard::NUM_5))        curFnCombo |= 0x080;
-        if (keyboard.KeyPressed(HWKeyboard::NUM_6))        curFnCombo |= 0x100;
-        if (keyboard.KeyPressed(HWKeyboard::NUM_7))        curFnCombo |= 0x200;
-        if (keyboard.KeyPressed(HWKeyboard::NUM_8))        curFnCombo |= 0x400;
-        if (keyboard.KeyPressed(HWKeyboard::NUM_9))        curFnCombo |= 0x800;
 
         uint16_t justPressed = curFnCombo & ~prevFnCombo;
 
         if (justPressed & 0x001) keyboard.IncreaseBrightness();
         if (justPressed & 0x002) keyboard.DecreaseBrightness();
         if (justPressed & 0x004) keyboard.NextEffect();
-        if (justPressed & 0x008) keyboard.SetEffect(HWKeyboard::EFFECT_BREATHING);
-        if (justPressed & 0x010) keyboard.SetEffect(HWKeyboard::EFFECT_RAINBOW_SWEEP);
-        if (justPressed & 0x020) keyboard.SetEffect(HWKeyboard::EFFECT_FLAME);
-        if (justPressed & 0x040) keyboard.SetEffect(HWKeyboard::EFFECT_REACTIVE);
-        if (justPressed & 0x080) keyboard.SetEffect(HWKeyboard::EFFECT_AURORA);
-        if (justPressed & 0x100) keyboard.SetEffect(HWKeyboard::EFFECT_DIGITAL_RAIN);
-        if (justPressed & 0x200) keyboard.SetEffect(HWKeyboard::EFFECT_CONTOUR);
-        if (justPressed & 0x400) keyboard.SetEffect(HWKeyboard::EFFECT_RIPPLE);
-        if (justPressed & 0x800) keyboard.SetEffect(HWKeyboard::EFFECT_STATIC);
+        if (justPressed & 0x008) keyboard.SetEffect(HWKeyboard::EFFECT_RAINBOW_SWEEP);
+        if (justPressed & 0x010) keyboard.SetEffect(HWKeyboard::EFFECT_REACTIVE);
+        if (justPressed & 0x020) keyboard.SetEffect(HWKeyboard::EFFECT_AURORA);
+        if (justPressed & 0x040) keyboard.SetEffect(HWKeyboard::EFFECT_CONTOUR);
 
         prevFnCombo = curFnCombo;
 

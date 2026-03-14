@@ -59,15 +59,10 @@ public:
 
     enum LightEffect_t : uint8_t
     {
-        EFFECT_BREATHING = 0,
-        EFFECT_RAINBOW_SWEEP,
-        EFFECT_FLAME,
+        EFFECT_RAINBOW_SWEEP = 0,
         EFFECT_REACTIVE,
         EFFECT_AURORA,
-        EFFECT_DIGITAL_RAIN,
         EFFECT_CONTOUR,
-        EFFECT_RIPPLE,
-        EFFECT_STATIC,
         EFFECT_COUNT
     };
 
@@ -130,7 +125,7 @@ public:
     volatile bool isRgbTxBusy;
     bool isCapsLocked = false;
     uint8_t brightnessLevel = 4;
-    LightEffect_t currentEffect = EFFECT_BREATHING;
+    LightEffect_t currentEffect = EFFECT_RAINBOW_SWEEP;
     uint8_t keyBrightness[LED_NUMBER]{};
 
 
