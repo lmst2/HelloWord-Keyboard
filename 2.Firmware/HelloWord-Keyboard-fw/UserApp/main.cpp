@@ -26,7 +26,9 @@ struct TouchBarSession_t
     bool isTouching = false;
     bool isGestureActive = false;
     bool isDesktopSeekMode = false;
+    bool isNoTouchPending = false;
     uint32_t touchStartMs = 0;
+    uint32_t lastTouchMs = 0;
     uint32_t lastPanMs = 0;
     uint32_t lastStepMs = 0;
     int16_t anchorPosition = 0;
@@ -38,6 +40,7 @@ struct SyntheticKeyState_t
 {
     bool holdLeftAlt = false;
     bool holdLeftShift = false;
+    bool hasShiftScrollPrimed = false;
     uint8_t leftShiftFrames = 0;
     uint8_t leftCtrlFrames = 0;
     uint8_t leftGuiFrames = 0;
@@ -77,6 +80,7 @@ static const uint8_t STATUS_LED_START = 82;
 static const uint8_t STATUS_LED_COUNT = 3;
 static const uint32_t TOUCHBAR_ACTIVATION_MS = 20;
 static const uint32_t TOUCHBAR_DESKTOP_HOLD_MS = 1000;
+static const uint32_t TOUCHBAR_RELEASE_GRACE_MS = 35;
 static const uint32_t TOUCHBAR_PAN_INTERVAL_MS = 12;
 static const uint32_t TOUCHBAR_STEP_INTERVAL_MS = 55;
 static const uint32_t STATUS_BLINK_PHASE_MS = 120;
@@ -84,10 +88,11 @@ static const uint32_t SLEEP_IDLE_TIMEOUT_MS = 300000;
 static const uint32_t SLEEP_FADE_OUT_MS = 800;
 static const uint32_t SLEEP_BREATHE_PERIOD_MS = 1200;
 static const int16_t TOUCHBAR_POSITION_SCALE = 256;
-static const int16_t TOUCHBAR_DESKTOP_SWIPE_DISTANCE = 192;
+static const int16_t TOUCHBAR_DESKTOP_SWIPE_DISTANCE = 96;
 static const int16_t TOUCHBAR_EDGE_REPEAT_THRESHOLD = 64;
 static const int16_t TOUCHBAR_PAN_DEADZONE = 64;
 static const int16_t TOUCHBAR_STEP_DISTANCE = 160;
+static const int16_t TOUCHBAR_DESKTOP_STEP_DISTANCE = 192;
 static const uint8_t SYNTHETIC_PULSE_FRAMES = 2;
 static const float SLEEP_STATUS_MIN_BRIGHTNESS = 0.04f;
 static const float SLEEP_STATUS_MAX_BRIGHTNESS = 0.14f;
@@ -242,7 +247,9 @@ static void ClearTouchBarActions()
     touchBarSession.isTouching = false;
     touchBarSession.isGestureActive = false;
     touchBarSession.isDesktopSeekMode = false;
+    touchBarSession.isNoTouchPending = false;
     touchBarSession.touchStartMs = 0;
+    touchBarSession.lastTouchMs = 0;
     touchBarSession.lastPanMs = 0;
     touchBarSession.lastStepMs = 0;
     touchBarSession.anchorPosition = 0;
@@ -250,6 +257,7 @@ static void ClearTouchBarActions()
     touchBarSession.emittedSteps = 0;
     syntheticKeys.holdLeftAlt = false;
     syntheticKeys.holdLeftShift = false;
+    syntheticKeys.hasShiftScrollPrimed = false;
 }
 
 
@@ -341,6 +349,12 @@ static void HandlePanMode(uint32_t nowMs)
         speed = 6;
 
     syntheticKeys.holdLeftShift = true;
+    if (!syntheticKeys.hasShiftScrollPrimed)
+    {
+        syntheticKeys.hasShiftScrollPrimed = true;
+        return;
+    }
+
     QueueMouseWheel((int8_t) (displacement > 0 ? -speed : speed));
 }
 
@@ -464,7 +478,7 @@ static void HandleDesktopSwitchMode(uint32_t nowMs)
     }
 
     const int16_t displacement = touchBarSession.currentPosition - touchBarSession.anchorPosition;
-    const int16_t targetSteps = displacement / TOUCHBAR_STEP_DISTANCE;
+    const int16_t targetSteps = displacement / TOUCHBAR_DESKTOP_STEP_DISTANCE;
 
     if (targetSteps == touchBarSession.emittedSteps)
     {
@@ -496,18 +510,34 @@ static void ProcessTouchBar(uint32_t nowMs)
 
     if (touchPosition < 0)
     {
+        if (!touchBarSession.isTouching)
+            return;
+
+        if (!touchBarSession.isNoTouchPending)
+        {
+            touchBarSession.isNoTouchPending = true;
+            touchBarSession.lastTouchMs = nowMs;
+            return;
+        }
+
+        if (nowMs - touchBarSession.lastTouchMs < TOUCHBAR_RELEASE_GRACE_MS)
+            return;
+
         if (touchBarSession.mode == TOUCHBAR_MODE_DESKTOP_SWITCH)
             FinalizeDesktopSwitchGesture();
         ClearTouchBarActions();
         return;
     }
 
+    touchBarSession.isNoTouchPending = false;
+    touchBarSession.lastTouchMs = nowMs;
     touchBarSession.currentPosition = touchPosition;
 
     if (!touchBarSession.isTouching)
     {
         touchBarSession.isTouching = true;
         touchBarSession.touchStartMs = nowMs;
+        touchBarSession.lastTouchMs = nowMs;
         touchBarSession.anchorPosition = touchPosition;
         touchBarSession.currentPosition = touchPosition;
         touchBarSession.emittedSteps = 0;
@@ -516,6 +546,7 @@ static void ProcessTouchBar(uint32_t nowMs)
         touchBarSession.lastStepMs = nowMs;
         syntheticKeys.holdLeftAlt = false;
         syntheticKeys.holdLeftShift = false;
+        syntheticKeys.hasShiftScrollPrimed = false;
         return;
     }
 
@@ -547,6 +578,18 @@ static void ProcessTouchBar(uint32_t nowMs)
 static void SendPendingReports()
 {
     uint8_t* keyboardReport = keyboard.GetHidReportBuffer(1);
+    const bool currentShiftHeld = (keyboardReport[1] & (1U << 1)) != 0;
+    const bool lastShiftHeld = (lastKeyboardReport[1] & (1U << 1)) != 0;
+
+    if (hasPendingMouseReport && lastShiftHeld && !currentShiftHeld)
+    {
+        if (USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS,
+                                       pendingMouseReport,
+                                       HWKeyboard::MOUSE_REPORT_SIZE) == USBD_OK)
+            hasPendingMouseReport = false;
+        return;
+    }
+
     if (!hasKeyboardReportSnapshot ||
         memcmp(lastKeyboardReport, keyboardReport, HWKeyboard::KEY_REPORT_SIZE) != 0)
     {
@@ -897,10 +940,12 @@ extern "C" void OnTimerCallback() // 1000Hz callback
     UpdateSleepState(nowMs, keyboard.HasAnyPhysicalInput());
 
     static uint16_t prevFnCombo = 0;
+    static bool prevTouchBarModeSwitchPressed = false;
 
     if (fnPressed)
     {
         uint16_t curFnCombo = 0;
+        const bool touchBarModeSwitchPressed = keyboard.KeyPressed(HWKeyboard::RIGHT_CTRL);
 
         if (keyboard.KeyPressed(HWKeyboard::UP_ARROW))    curFnCombo |= 0x001;
         if (keyboard.KeyPressed(HWKeyboard::DOWN_ARROW))  curFnCombo |= 0x002;
@@ -910,7 +955,6 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (keyboard.KeyPressed(HWKeyboard::NUM_3))        curFnCombo |= 0x020;
         if (keyboard.KeyPressed(HWKeyboard::NUM_4))        curFnCombo |= 0x040;
         if (keyboard.KeyPressed(HWKeyboard::NUM_5))        curFnCombo |= 0x080;
-        if (keyboard.KeyPressed(HWKeyboard::RIGHT_CTRL))   curFnCombo |= 0x100;
 
         uint16_t justPressed = curFnCombo & ~prevFnCombo;
 
@@ -922,9 +966,10 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (justPressed & 0x020) keyboard.SetEffect(HWKeyboard::EFFECT_AURORA);
         if (justPressed & 0x040) keyboard.SetEffect(HWKeyboard::EFFECT_RIPPLE);
         if (justPressed & 0x080) keyboard.SetEffect(HWKeyboard::EFFECT_STATIC);
-        if (justPressed & 0x100) CycleTouchBarMode();
+        if (touchBarModeSwitchPressed && !prevTouchBarModeSwitchPressed) CycleTouchBarMode();
 
         prevFnCombo = curFnCombo;
+        prevTouchBarModeSwitchPressed = touchBarModeSwitchPressed;
         ClearTouchBarActions();
 
         uint8_t* report = keyboard.GetHidReportBuffer(1);
@@ -933,6 +978,7 @@ extern "C" void OnTimerCallback() // 1000Hz callback
     else
     {
         prevFnCombo = 0;
+        prevTouchBarModeSwitchPressed = false;
         ProcessTouchBar(nowMs);
         ApplySyntheticKeys();
     }
