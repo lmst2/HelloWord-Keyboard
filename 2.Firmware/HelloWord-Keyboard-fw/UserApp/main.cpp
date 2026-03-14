@@ -71,6 +71,7 @@ static TouchBarSession_t touchBarSession;
 static SyntheticKeyState_t syntheticKeys;
 static StatusBlinkState_t statusBlink;
 static SleepState_t sleepState;
+static volatile uint8_t pendingStatusBlinkCount = 0;
 static uint8_t lastKeyboardReport[HWKeyboard::KEY_REPORT_SIZE]{};
 static uint8_t pendingMouseReport[HWKeyboard::MOUSE_REPORT_SIZE]{};
 static bool hasKeyboardReportSnapshot = false;
@@ -79,10 +80,13 @@ static bool hasPendingMouseReport = false;
 static const uint8_t STATUS_LED_START = 82;
 static const uint8_t STATUS_LED_COUNT = 3;
 static const uint32_t TOUCHBAR_ACTIVATION_MS = 20;
-static const uint32_t TOUCHBAR_DESKTOP_HOLD_MS = 1000;
+static const uint32_t TOUCHBAR_APP_ACTIVATION_MS = 90;
+static const uint32_t TOUCHBAR_DESKTOP_HOLD_MS = 500;
 static const uint32_t TOUCHBAR_RELEASE_GRACE_MS = 35;
+static const uint32_t TOUCHBAR_SWITCH_RELEASE_GRACE_MS = 90;
 static const uint32_t TOUCHBAR_PAN_INTERVAL_MS = 12;
-static const uint32_t TOUCHBAR_STEP_INTERVAL_MS = 55;
+static const uint32_t TOUCHBAR_APP_STEP_INTERVAL_MS = 55;
+static const uint32_t TOUCHBAR_DESKTOP_STEP_INTERVAL_MS = 500;
 static const uint32_t STATUS_BLINK_PHASE_MS = 120;
 static const uint32_t SLEEP_IDLE_TIMEOUT_MS = 300000;
 static const uint32_t SLEEP_FADE_OUT_MS = 800;
@@ -180,9 +184,29 @@ static int16_t GetTouchBarPosition(uint8_t touchState)
 
 static void TriggerStatusBlink(uint8_t flashCount)
 {
-    statusBlink.active = flashCount > 0;
-    statusBlink.flashCount = flashCount;
-    statusBlink.startMs = HAL_GetTick();
+    pendingStatusBlinkCount = flashCount;
+}
+
+
+static uint32_t GetTouchBarActivationDelayMs()
+{
+    if (touchBarSession.mode == TOUCHBAR_MODE_APP_SWITCH)
+        return TOUCHBAR_APP_ACTIVATION_MS;
+
+    return TOUCHBAR_ACTIVATION_MS;
+}
+
+
+static uint32_t GetTouchBarReleaseGraceMs()
+{
+    switch (touchBarSession.mode)
+    {
+        case TOUCHBAR_MODE_APP_SWITCH:
+        case TOUCHBAR_MODE_DESKTOP_SWITCH:
+            return TOUCHBAR_SWITCH_RELEASE_GRACE_MS;
+        default:
+            return TOUCHBAR_RELEASE_GRACE_MS;
+    }
 }
 
 
@@ -383,19 +407,22 @@ static int16_t GetTouchBarEdgeDirection(int16_t position)
 }
 
 
-static bool TryRepeatStepAtEdge(uint32_t nowMs, void (*queueStep)(int16_t))
+static bool TryRepeatStepAtEdge(uint32_t nowMs,
+                                uint32_t stepIntervalMs,
+                                int16_t stepDistance,
+                                void (*queueStep)(int16_t))
 {
     const int16_t edgeDirection = GetTouchBarEdgeDirection(touchBarSession.currentPosition);
     if (edgeDirection == 0)
         return false;
-    if (nowMs - touchBarSession.lastStepMs < TOUCHBAR_STEP_INTERVAL_MS)
+    if (nowMs - touchBarSession.lastStepMs < stepIntervalMs)
         return true;
 
     touchBarSession.lastStepMs = nowMs;
     queueStep(edgeDirection);
     touchBarSession.emittedSteps += edgeDirection;
     // Move the anchor virtually outward so edge holds can continue stepping.
-    touchBarSession.anchorPosition -= edgeDirection * TOUCHBAR_STEP_DISTANCE;
+    touchBarSession.anchorPosition -= edgeDirection * stepDistance;
     return true;
 }
 
@@ -407,10 +434,10 @@ static void HandleAppSwitchMode(uint32_t nowMs)
 
     if (targetSteps == touchBarSession.emittedSteps)
     {
-        TryRepeatStepAtEdge(nowMs, QueueAppSwitchStep);
+        TryRepeatStepAtEdge(nowMs, TOUCHBAR_APP_STEP_INTERVAL_MS, TOUCHBAR_STEP_DISTANCE, QueueAppSwitchStep);
         return;
     }
-    if (nowMs - touchBarSession.lastStepMs < TOUCHBAR_STEP_INTERVAL_MS)
+    if (nowMs - touchBarSession.lastStepMs < TOUCHBAR_APP_STEP_INTERVAL_MS)
         return;
 
     touchBarSession.lastStepMs = nowMs;
@@ -473,7 +500,7 @@ static void HandleDesktopSwitchMode(uint32_t nowMs)
         touchBarSession.isDesktopSeekMode = true;
         touchBarSession.anchorPosition = touchBarSession.currentPosition;
         touchBarSession.emittedSteps = 0;
-        touchBarSession.lastStepMs = nowMs;
+        touchBarSession.lastStepMs = nowMs - TOUCHBAR_DESKTOP_STEP_INTERVAL_MS;
         return;
     }
 
@@ -482,10 +509,13 @@ static void HandleDesktopSwitchMode(uint32_t nowMs)
 
     if (targetSteps == touchBarSession.emittedSteps)
     {
-        TryRepeatStepAtEdge(nowMs, QueueDesktopSwitchStep);
+        TryRepeatStepAtEdge(nowMs,
+                            TOUCHBAR_DESKTOP_STEP_INTERVAL_MS,
+                            TOUCHBAR_DESKTOP_STEP_DISTANCE,
+                            QueueDesktopSwitchStep);
         return;
     }
-    if (nowMs - touchBarSession.lastStepMs < TOUCHBAR_STEP_INTERVAL_MS)
+    if (nowMs - touchBarSession.lastStepMs < TOUCHBAR_DESKTOP_STEP_INTERVAL_MS)
         return;
 
     touchBarSession.lastStepMs = nowMs;
@@ -520,7 +550,7 @@ static void ProcessTouchBar(uint32_t nowMs)
             return;
         }
 
-        if (nowMs - touchBarSession.lastTouchMs < TOUCHBAR_RELEASE_GRACE_MS)
+        if (nowMs - touchBarSession.lastTouchMs < GetTouchBarReleaseGraceMs())
             return;
 
         if (touchBarSession.mode == TOUCHBAR_MODE_DESKTOP_SWITCH)
@@ -552,7 +582,7 @@ static void ProcessTouchBar(uint32_t nowMs)
 
     if (!touchBarSession.isGestureActive)
     {
-        if (nowMs - touchBarSession.touchStartMs < TOUCHBAR_ACTIVATION_MS)
+        if (nowMs - touchBarSession.touchStartMs < GetTouchBarActivationDelayMs())
             return;
 
         touchBarSession.isGestureActive = true;
@@ -838,6 +868,15 @@ static void ApplySleepLighting(uint32_t nowMs)
 
 static void UpdateStatusLEDs(uint32_t nowMs)
 {
+    const uint8_t requestedBlinkCount = pendingStatusBlinkCount;
+    if (requestedBlinkCount > 0)
+    {
+        statusBlink.active = true;
+        statusBlink.flashCount = requestedBlinkCount;
+        statusBlink.startMs = nowMs;
+        pendingStatusBlinkCount = 0;
+    }
+
     if (sleepState.isSleeping)
     {
         const HWKeyboard::Color_t sleepColor{255, 255, 255};
