@@ -147,7 +147,10 @@ void HWKeyboard::WriteEncodedRgbByID(uint8_t _keyId, uint8_t _red, uint8_t _gree
 }
 
 
-void HWKeyboard::EncodeRgbBufferByID(uint8_t _keyId, HWKeyboard::Color_t _color, float _brightness)
+void HWKeyboard::EncodeRgbBufferByID(uint8_t _keyId,
+                                     HWKeyboard::Color_t _color,
+                                     float _brightness,
+                                     bool _applyBrightnessMap)
 {
     if (_brightness <= 0.0f || (_color.r == 0 && _color.g == 0 && _color.b == 0))
     {
@@ -158,37 +161,34 @@ void HWKeyboard::EncodeRgbBufferByID(uint8_t _keyId, HWKeyboard::Color_t _color,
     // Keep the legacy ws2812 workaround for lit LEDs, but bypass it for a true off state.
     if (_color.b < 1) _color.b = 1;
 
-    const uint8_t green = (uint8_t) ((float) _color.g * _brightness) >> brightnessPreDiv;
-    const uint8_t red = (uint8_t) ((float) _color.r * _brightness) >> brightnessPreDiv;
-    const uint8_t blue = (uint8_t) ((float) _color.b * _brightness) >> brightnessPreDiv;
+    uint8_t green = (uint8_t) ((float) _color.g * _brightness);
+    uint8_t red = (uint8_t) ((float) _color.r * _brightness);
+    uint8_t blue = (uint8_t) ((float) _color.b * _brightness);
+
+    if (_applyBrightnessMap)
+    {
+        green >>= brightnessPreDiv;
+        red >>= brightnessPreDiv;
+        blue >>= brightnessPreDiv;
+    }
+
     WriteEncodedRgbByID(_keyId, red, green, blue);
 }
 
 
-void HWKeyboard::SetRgbBufferByID(uint8_t _keyId, HWKeyboard::Color_t _color, float _brightness)
+void HWKeyboard::SetRgbBufferByID(uint8_t _keyId,
+                                  HWKeyboard::Color_t _color,
+                                  float _brightness,
+                                  bool _applyBrightnessMap)
 {
     ledColors[_keyId] = _color;
-    EncodeRgbBufferByID(_keyId, _color, _brightness);
+    EncodeRgbBufferByID(_keyId, _color, _brightness, _applyBrightnessMap);
 }
 
 
-void HWKeyboard::SetRgbBufferRawByID(uint8_t _keyId, HWKeyboard::Color_t _color)
+void HWKeyboard::ApplyStoredRgbByID(uint8_t _keyId, float _brightness, bool _applyBrightnessMap)
 {
-    if (_color.r == 0 && _color.g == 0 && _color.b == 0)
-    {
-        TurnOffRgbOutputByID(_keyId);
-        return;
-    }
-
-    // Keep the same blue-channel safeguard for non-zero frames.
-    if (_color.b < 1) _color.b = 1;
-    WriteEncodedRgbByID(_keyId, _color.r, _color.g, _color.b);
-}
-
-
-void HWKeyboard::ApplyStoredRgbByID(uint8_t _keyId, float _brightness)
-{
-    EncodeRgbBufferByID(_keyId, ledColors[_keyId], _brightness);
+    EncodeRgbBufferByID(_keyId, ledColors[_keyId], _brightness, _applyBrightnessMap);
 }
 
 

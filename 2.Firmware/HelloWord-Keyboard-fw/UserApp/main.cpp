@@ -873,7 +873,7 @@ static void ApplySleepLighting(uint32_t nowMs)
             continue;
 
         if (sleepScale <= 0.0f)
-            keyboard.TurnOffRgbOutputByID(i);
+            keyboard.ApplyStoredRgbByID(i, 0.0f);
         else
             keyboard.ApplyStoredRgbByID(i, sleepScale);
     }
@@ -897,10 +897,12 @@ static void UpdateStatusLEDs(uint32_t nowMs)
         for (uint8_t i = 0; i < STATUS_LED_COUNT; i++)
         {
             if (sleepBrightness == 0)
-                keyboard.TurnOffRgbOutputByID(STATUS_LED_START + i);
+                keyboard.SetRgbBufferByID(STATUS_LED_START + i, {0, 0, 0});
             else
-                keyboard.SetRgbBufferRawByID(STATUS_LED_START + i,
-                                             HWKeyboard::Color_t{sleepBrightness, sleepBrightness, sleepBrightness});
+                keyboard.SetRgbBufferByID(STATUS_LED_START + i,
+                                          HWKeyboard::Color_t{sleepBrightness, sleepBrightness, sleepBrightness},
+                                          1.0f,
+                                          false);
         }
         return;
     }
@@ -908,7 +910,7 @@ static void UpdateStatusLEDs(uint32_t nowMs)
     if (keyboard.brightnessLevel == 0)
     {
         for (uint8_t i = 0; i < STATUS_LED_COUNT; i++)
-            keyboard.TurnOffRgbOutputByID(STATUS_LED_START + i);
+            keyboard.SetRgbBufferByID(STATUS_LED_START + i, {0, 0, 0});
         return;
     }
 

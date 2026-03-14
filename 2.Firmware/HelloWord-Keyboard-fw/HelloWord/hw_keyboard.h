@@ -93,10 +93,13 @@ public:
     uint8_t  GetTouchBarState(uint8_t _id = 0);
     void SetMouseWheel(int8_t _wheel);
     void ClearMouseReport();
-    void SetRgbBufferByID(uint8_t _keyId, Color_t _color, float _brightness = 1);
-    void SetRgbBufferRawByID(uint8_t _keyId, Color_t _color);
-    void ApplyStoredRgbByID(uint8_t _keyId, float _brightness = 1);
-    void TurnOffRgbOutputByID(uint8_t _keyId);
+    void SetRgbBufferByID(uint8_t _keyId,
+                          Color_t _color,
+                          float _brightness = 1,
+                          bool _applyBrightnessMap = true);
+    void ApplyStoredRgbByID(uint8_t _keyId,
+                            float _brightness = 1,
+                            bool _applyBrightnessMap = true);
 
     void IncreaseBrightness();
     void DecreaseBrightness();
@@ -153,7 +156,11 @@ private:
     uint8_t brightnessPreDiv = 2;
 
     void WriteEncodedRgbByID(uint8_t _keyId, uint8_t _red, uint8_t _green, uint8_t _blue);
-    void EncodeRgbBufferByID(uint8_t _keyId, Color_t _color, float _brightness);
+    void EncodeRgbBufferByID(uint8_t _keyId,
+                             Color_t _color,
+                             float _brightness,
+                             bool _applyBrightnessMap);
+    void TurnOffRgbOutputByID(uint8_t _keyId);
 };
 
 
