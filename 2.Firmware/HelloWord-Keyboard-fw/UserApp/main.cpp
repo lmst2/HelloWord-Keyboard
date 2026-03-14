@@ -27,13 +27,16 @@ struct TouchBarSession_t
     bool isGestureActive = false;
     bool isDesktopSeekMode = false;
     bool isNoTouchPending = false;
+    uint8_t activeSegment = 0xFF;
     uint32_t touchStartMs = 0;
     uint32_t lastTouchMs = 0;
     uint32_t lastPanMs = 0;
     uint32_t lastStepMs = 0;
+    uint32_t edgeHoldStartMs = 0;
     int16_t anchorPosition = 0;
     int16_t currentPosition = 0;
     int16_t emittedSteps = 0;
+    int8_t edgeHoldDirection = 0;
 };
 
 struct SyntheticKeyState_t
@@ -79,9 +82,13 @@ static bool hasPendingMouseReport = false;
 
 static const uint8_t STATUS_LED_START = 82;
 static const uint8_t STATUS_LED_COUNT = 3;
+static const uint8_t TOUCHBAR_SEGMENT_COUNT = 2;
+static const uint8_t TOUCHBAR_TOUCHES_PER_SEGMENT = HWKeyboard::TOUCHPAD_NUMBER / TOUCHBAR_SEGMENT_COUNT;
+static const uint8_t TOUCHBAR_INVALID_SEGMENT = 0xFF;
 static const uint32_t TOUCHBAR_ACTIVATION_MS = 20;
 static const uint32_t TOUCHBAR_APP_ACTIVATION_MS = 90;
 static const uint32_t TOUCHBAR_DESKTOP_HOLD_MS = 500;
+static const uint32_t TOUCHBAR_EDGE_REPEAT_DELAY_MS = 350;
 static const uint32_t TOUCHBAR_RELEASE_GRACE_MS = 35;
 static const uint32_t TOUCHBAR_SWITCH_RELEASE_GRACE_MS = 90;
 static const uint32_t TOUCHBAR_PAN_INTERVAL_MS = 12;
@@ -160,17 +167,38 @@ static inline int16_t abs16(int16_t value)
 }
 
 
-static int16_t GetTouchBarPosition(uint8_t touchState)
+static uint8_t GetTouchBarLogicalBit(uint8_t logicalPosition)
 {
+    return (uint8_t) (1U << (HWKeyboard::TOUCHPAD_NUMBER - 1U - logicalPosition));
+}
+
+
+static uint8_t CountTouchBarSegmentTouches(uint8_t touchState, uint8_t segmentIndex)
+{
+    const uint8_t start = (uint8_t) (segmentIndex * TOUCHBAR_TOUCHES_PER_SEGMENT);
+    uint8_t touchCount = 0;
+
+    for (uint8_t localIndex = 0; localIndex < TOUCHBAR_TOUCHES_PER_SEGMENT; localIndex++)
+    {
+        if (touchState & GetTouchBarLogicalBit((uint8_t) (start + localIndex)))
+            touchCount++;
+    }
+
+    return touchCount;
+}
+
+
+static int16_t GetTouchBarSegmentPosition(uint8_t touchState, uint8_t segmentIndex)
+{
+    const uint8_t start = (uint8_t) (segmentIndex * TOUCHBAR_TOUCHES_PER_SEGMENT);
     uint16_t weightedSum = 0;
     uint8_t activeCount = 0;
 
-    for (uint8_t i = 0; i < HWKeyboard::TOUCHPAD_NUMBER; i++)
+    for (uint8_t localIndex = 0; localIndex < TOUCHBAR_TOUCHES_PER_SEGMENT; localIndex++)
     {
-        const uint8_t bit = (uint8_t) (1U << (HWKeyboard::TOUCHPAD_NUMBER - 1U - i));
-        if (touchState & bit)
+        if (touchState & GetTouchBarLogicalBit((uint8_t) (start + localIndex)))
         {
-            weightedSum += (uint16_t) i * TOUCHBAR_POSITION_SCALE;
+            weightedSum += (uint16_t) localIndex * TOUCHBAR_POSITION_SCALE;
             activeCount++;
         }
     }
@@ -179,6 +207,27 @@ static int16_t GetTouchBarPosition(uint8_t touchState)
         return -1;
 
     return (int16_t) (weightedSum / activeCount);
+}
+
+
+static uint8_t SelectTouchBarSegment(uint8_t touchState)
+{
+    uint8_t bestSegment = TOUCHBAR_INVALID_SEGMENT;
+    uint8_t bestTouchCount = 0;
+
+    for (uint8_t segmentIndex = 0; segmentIndex < TOUCHBAR_SEGMENT_COUNT; segmentIndex++)
+    {
+        const uint8_t touchCount = CountTouchBarSegmentTouches(touchState, segmentIndex);
+        if (touchCount == 0)
+            continue;
+        if (bestSegment == TOUCHBAR_INVALID_SEGMENT || touchCount > bestTouchCount)
+        {
+            bestSegment = segmentIndex;
+            bestTouchCount = touchCount;
+        }
+    }
+
+    return bestSegment;
 }
 
 
@@ -286,13 +335,16 @@ static void ClearTouchBarActions()
     touchBarSession.isGestureActive = false;
     touchBarSession.isDesktopSeekMode = false;
     touchBarSession.isNoTouchPending = false;
+    touchBarSession.activeSegment = TOUCHBAR_INVALID_SEGMENT;
     touchBarSession.touchStartMs = 0;
     touchBarSession.lastTouchMs = 0;
     touchBarSession.lastPanMs = 0;
     touchBarSession.lastStepMs = 0;
+    touchBarSession.edgeHoldStartMs = 0;
     touchBarSession.anchorPosition = 0;
     touchBarSession.currentPosition = 0;
     touchBarSession.emittedSteps = 0;
+    touchBarSession.edgeHoldDirection = 0;
     syntheticKeys.holdLeftAlt = false;
     syntheticKeys.holdLeftShift = false;
     syntheticKeys.hasShiftScrollPrimed = false;
@@ -412,7 +464,7 @@ static void QueueAppSwitchStep(int16_t direction)
 
 static int16_t GetTouchBarEdgeDirection(int16_t position)
 {
-    const int16_t maxPosition = (HWKeyboard::TOUCHPAD_NUMBER - 1) * TOUCHBAR_POSITION_SCALE;
+    const int16_t maxPosition = (TOUCHBAR_TOUCHES_PER_SEGMENT - 1) * TOUCHBAR_POSITION_SCALE;
     if (position <= TOUCHBAR_EDGE_REPEAT_THRESHOLD)
         return -1;
     if (position >= maxPosition - TOUCHBAR_EDGE_REPEAT_THRESHOLD)
@@ -428,7 +480,20 @@ static bool TryRepeatStepAtEdge(uint32_t nowMs,
 {
     const int16_t edgeDirection = GetTouchBarEdgeDirection(touchBarSession.currentPosition);
     if (edgeDirection == 0)
+    {
+        touchBarSession.edgeHoldStartMs = 0;
+        touchBarSession.edgeHoldDirection = 0;
         return false;
+    }
+
+    if (touchBarSession.edgeHoldDirection != edgeDirection)
+    {
+        touchBarSession.edgeHoldDirection = (int8_t) edgeDirection;
+        touchBarSession.edgeHoldStartMs = nowMs;
+        return true;
+    }
+    if (nowMs - touchBarSession.edgeHoldStartMs < TOUCHBAR_EDGE_REPEAT_DELAY_MS)
+        return true;
     if (nowMs - touchBarSession.lastStepMs < stepIntervalMs)
         return true;
 
@@ -455,6 +520,8 @@ static void HandleAppSwitchMode(uint32_t nowMs)
         return;
 
     touchBarSession.lastStepMs = nowMs;
+    touchBarSession.edgeHoldStartMs = 0;
+    touchBarSession.edgeHoldDirection = 0;
 
     if (targetSteps > touchBarSession.emittedSteps)
     {
@@ -514,6 +581,8 @@ static void HandleDesktopSwitchMode(uint32_t nowMs)
         touchBarSession.isDesktopSeekMode = true;
         touchBarSession.anchorPosition = touchBarSession.currentPosition;
         touchBarSession.emittedSteps = 0;
+        touchBarSession.edgeHoldStartMs = 0;
+        touchBarSession.edgeHoldDirection = 0;
         touchBarSession.lastStepMs = nowMs - TOUCHBAR_DESKTOP_STEP_INTERVAL_MS;
         return;
     }
@@ -533,6 +602,8 @@ static void HandleDesktopSwitchMode(uint32_t nowMs)
         return;
 
     touchBarSession.lastStepMs = nowMs;
+    touchBarSession.edgeHoldStartMs = 0;
+    touchBarSession.edgeHoldDirection = 0;
 
     if (targetSteps > touchBarSession.emittedSteps)
     {
@@ -550,7 +621,21 @@ static void HandleDesktopSwitchMode(uint32_t nowMs)
 static void ProcessTouchBar(uint32_t nowMs)
 {
     const uint8_t touchState = keyboard.GetTouchBarState();
-    const int16_t touchPosition = GetTouchBarPosition(touchState);
+    uint8_t activeSegment = TOUCHBAR_INVALID_SEGMENT;
+    int16_t touchPosition = -1;
+
+    if (touchBarSession.isTouching)
+    {
+        activeSegment = touchBarSession.activeSegment;
+        if (activeSegment < TOUCHBAR_SEGMENT_COUNT)
+            touchPosition = GetTouchBarSegmentPosition(touchState, activeSegment);
+    }
+    else
+    {
+        activeSegment = SelectTouchBarSegment(touchState);
+        if (activeSegment < TOUCHBAR_SEGMENT_COUNT)
+            touchPosition = GetTouchBarSegmentPosition(touchState, activeSegment);
+    }
 
     if (touchPosition < 0)
     {
@@ -580,6 +665,7 @@ static void ProcessTouchBar(uint32_t nowMs)
     if (!touchBarSession.isTouching)
     {
         touchBarSession.isTouching = true;
+        touchBarSession.activeSegment = activeSegment;
         touchBarSession.touchStartMs = nowMs;
         touchBarSession.lastTouchMs = nowMs;
         touchBarSession.anchorPosition = touchPosition;
@@ -588,6 +674,8 @@ static void ProcessTouchBar(uint32_t nowMs)
         touchBarSession.isDesktopSeekMode = false;
         touchBarSession.lastPanMs = nowMs;
         touchBarSession.lastStepMs = nowMs;
+        touchBarSession.edgeHoldStartMs = 0;
+        touchBarSession.edgeHoldDirection = 0;
         syntheticKeys.holdLeftAlt = false;
         syntheticKeys.holdLeftShift = false;
         syntheticKeys.hasShiftScrollPrimed = false;
