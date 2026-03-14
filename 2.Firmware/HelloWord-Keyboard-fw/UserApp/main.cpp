@@ -502,6 +502,44 @@ static int16_t GetTouchBarEdgeDirection(int16_t position)
 }
 
 
+static void ResetTouchBarEdgeHold()
+{
+    touchBarSession.edgeHoldStartMs = 0;
+    touchBarSession.edgeHoldDirection = 0;
+}
+
+
+static void ArmTouchBarEdgeHold(uint32_t nowMs, int16_t edgeDirection)
+{
+    touchBarSession.edgeHoldDirection = (int8_t) edgeDirection;
+    touchBarSession.edgeHoldStartMs = nowMs;
+}
+
+
+static bool ShouldDelayDesktopEdgeContinuation(uint32_t nowMs, int16_t targetSteps)
+{
+    const int16_t edgeDirection = GetTouchBarEdgeDirection(touchBarSession.currentPosition);
+    if (edgeDirection == 0)
+    {
+        ResetTouchBarEdgeHold();
+        return false;
+    }
+
+    const int16_t pendingDirection = targetSteps > touchBarSession.emittedSteps ? 1 : -1;
+    if (pendingDirection != edgeDirection)
+        return false;
+
+    if (touchBarSession.edgeHoldDirection != edgeDirection)
+    {
+        // Allow the first edge step immediately, then require a hold before continuing.
+        ArmTouchBarEdgeHold(nowMs, edgeDirection);
+        return false;
+    }
+
+    return nowMs - touchBarSession.edgeHoldStartMs < TOUCHBAR_EDGE_REPEAT_DELAY_MS;
+}
+
+
 static bool TryRepeatStepAtEdge(uint32_t nowMs,
                                 uint32_t stepIntervalMs,
                                 int16_t stepDistance,
@@ -510,15 +548,13 @@ static bool TryRepeatStepAtEdge(uint32_t nowMs,
     const int16_t edgeDirection = GetTouchBarEdgeDirection(touchBarSession.currentPosition);
     if (edgeDirection == 0)
     {
-        touchBarSession.edgeHoldStartMs = 0;
-        touchBarSession.edgeHoldDirection = 0;
+        ResetTouchBarEdgeHold();
         return false;
     }
 
     if (touchBarSession.edgeHoldDirection != edgeDirection)
     {
-        touchBarSession.edgeHoldDirection = (int8_t) edgeDirection;
-        touchBarSession.edgeHoldStartMs = nowMs;
+        ArmTouchBarEdgeHold(nowMs, edgeDirection);
         return true;
     }
     if (nowMs - touchBarSession.edgeHoldStartMs < TOUCHBAR_EDGE_REPEAT_DELAY_MS)
@@ -627,12 +663,14 @@ static void HandleDesktopSwitchMode(uint32_t nowMs)
                             QueueDesktopSwitchStep);
         return;
     }
+    if (ShouldDelayDesktopEdgeContinuation(nowMs, targetSteps))
+        return;
     if (nowMs - touchBarSession.lastStepMs < TOUCHBAR_DESKTOP_STEP_INTERVAL_MS)
         return;
 
     touchBarSession.lastStepMs = nowMs;
-    touchBarSession.edgeHoldStartMs = 0;
-    touchBarSession.edgeHoldDirection = 0;
+    if (GetTouchBarEdgeDirection(touchBarSession.currentPosition) == 0)
+        ResetTouchBarEdgeHold();
 
     if (targetSteps > touchBarSession.emittedSteps)
     {
