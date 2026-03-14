@@ -89,7 +89,8 @@ static const uint8_t TOUCHBAR_INVALID_SEGMENT = 0xFF;
 static const uint32_t TOUCHBAR_ACTIVATION_MS = 20;
 static const uint32_t TOUCHBAR_APP_ACTIVATION_MS = 90;
 static const uint32_t TOUCHBAR_DESKTOP_HOLD_MS = 500;
-static const uint32_t TOUCHBAR_EDGE_REPEAT_DELAY_MS = 400;
+static const uint32_t TOUCHBAR_APP_EDGE_REPEAT_DELAY_MS = 400;
+static const uint32_t TOUCHBAR_DESKTOP_EDGE_REPEAT_DELAY_MS = 1200;
 static const uint32_t TOUCHBAR_RELEASE_GRACE_MS = 35;
 static const uint32_t TOUCHBAR_SWITCH_RELEASE_GRACE_MS = 90;
 static const uint32_t TOUCHBAR_PAN_INTERVAL_MS = 12;
@@ -536,11 +537,12 @@ static bool ShouldDelayDesktopEdgeContinuation(uint32_t nowMs, int16_t targetSte
         return false;
     }
 
-    return nowMs - touchBarSession.edgeHoldStartMs < TOUCHBAR_EDGE_REPEAT_DELAY_MS;
+    return nowMs - touchBarSession.edgeHoldStartMs < TOUCHBAR_DESKTOP_EDGE_REPEAT_DELAY_MS;
 }
 
 
 static bool TryRepeatStepAtEdge(uint32_t nowMs,
+                                uint32_t holdDelayMs,
                                 uint32_t stepIntervalMs,
                                 int16_t stepDistance,
                                 void (*queueStep)(int16_t))
@@ -557,7 +559,7 @@ static bool TryRepeatStepAtEdge(uint32_t nowMs,
         ArmTouchBarEdgeHold(nowMs, edgeDirection);
         return true;
     }
-    if (nowMs - touchBarSession.edgeHoldStartMs < TOUCHBAR_EDGE_REPEAT_DELAY_MS)
+    if (nowMs - touchBarSession.edgeHoldStartMs < holdDelayMs)
         return true;
     if (nowMs - touchBarSession.lastStepMs < stepIntervalMs)
         return true;
@@ -578,7 +580,11 @@ static void HandleAppSwitchMode(uint32_t nowMs)
 
     if (targetSteps == touchBarSession.emittedSteps)
     {
-        TryRepeatStepAtEdge(nowMs, TOUCHBAR_APP_STEP_INTERVAL_MS, TOUCHBAR_STEP_DISTANCE, QueueAppSwitchStep);
+        TryRepeatStepAtEdge(nowMs,
+                            TOUCHBAR_APP_EDGE_REPEAT_DELAY_MS,
+                            TOUCHBAR_APP_STEP_INTERVAL_MS,
+                            TOUCHBAR_STEP_DISTANCE,
+                            QueueAppSwitchStep);
         return;
     }
     if (nowMs - touchBarSession.lastStepMs < TOUCHBAR_APP_STEP_INTERVAL_MS)
@@ -658,6 +664,7 @@ static void HandleDesktopSwitchMode(uint32_t nowMs)
     if (targetSteps == touchBarSession.emittedSteps)
     {
         TryRepeatStepAtEdge(nowMs,
+                            TOUCHBAR_DESKTOP_EDGE_REPEAT_DELAY_MS,
                             TOUCHBAR_DESKTOP_STEP_INTERVAL_MS,
                             TOUCHBAR_DESKTOP_STEP_DISTANCE,
                             QueueDesktopSwitchStep);
