@@ -83,7 +83,8 @@ static bool hasPendingMouseReport = false;
 static const uint8_t STATUS_LED_START = 82;
 static const uint8_t STATUS_LED_COUNT = 3;
 static const uint8_t TOUCHBAR_SEGMENT_COUNT = 2;
-static const uint8_t TOUCHBAR_TOUCHES_PER_SEGMENT = HWKeyboard::TOUCHPAD_NUMBER / TOUCHBAR_SEGMENT_COUNT;
+static const uint8_t TOUCHBAR_TOUCHES_PER_SEGMENT = 4;
+static const uint8_t TOUCHBAR_ENTRY_TOUCHES_PER_SEGMENT = 3;
 static const uint8_t TOUCHBAR_INVALID_SEGMENT = 0xFF;
 static const uint32_t TOUCHBAR_ACTIVATION_MS = 20;
 static const uint32_t TOUCHBAR_APP_ACTIVATION_MS = 90;
@@ -107,6 +108,14 @@ static const int16_t TOUCHBAR_DESKTOP_STEP_DISTANCE = 256;
 static const uint8_t SYNTHETIC_PULSE_FRAMES = 2;
 static const uint16_t SLEEP_PULSE_RESOLUTION = 1024;
 static const uint8_t SLEEP_STATUS_MAX_RAW_BRIGHTNESS = 48;
+static const uint8_t TOUCHBAR_SEGMENT_TOUCH_MAP[TOUCHBAR_SEGMENT_COUNT][TOUCHBAR_TOUCHES_PER_SEGMENT] = {
+    {0, 1, 2, 3},
+    {2, 3, 4, 5}
+};
+static const uint8_t TOUCHBAR_SEGMENT_ENTRY_TOUCH_MAP[TOUCHBAR_SEGMENT_COUNT][TOUCHBAR_ENTRY_TOUCHES_PER_SEGMENT] = {
+    {0, 1, 2},
+    {3, 4, 5}
+};
 
 
 /* Utility Functions ---------------------------------------------------------*/
@@ -173,14 +182,13 @@ static uint8_t GetTouchBarLogicalBit(uint8_t logicalPosition)
 }
 
 
-static uint8_t CountTouchBarSegmentTouches(uint8_t touchState, uint8_t segmentIndex)
+static uint8_t CountMappedTouchBarTouches(uint8_t touchState, const uint8_t* logicalPositions, uint8_t logicalCount)
 {
-    const uint8_t start = (uint8_t) (segmentIndex * TOUCHBAR_TOUCHES_PER_SEGMENT);
     uint8_t touchCount = 0;
 
-    for (uint8_t localIndex = 0; localIndex < TOUCHBAR_TOUCHES_PER_SEGMENT; localIndex++)
+    for (uint8_t logicalIndex = 0; logicalIndex < logicalCount; logicalIndex++)
     {
-        if (touchState & GetTouchBarLogicalBit((uint8_t) (start + localIndex)))
+        if (touchState & GetTouchBarLogicalBit(logicalPositions[logicalIndex]))
             touchCount++;
     }
 
@@ -188,15 +196,14 @@ static uint8_t CountTouchBarSegmentTouches(uint8_t touchState, uint8_t segmentIn
 }
 
 
-static int16_t GetTouchBarSegmentPosition(uint8_t touchState, uint8_t segmentIndex)
+static int16_t GetMappedTouchBarPosition(uint8_t touchState, const uint8_t* logicalPositions, uint8_t logicalCount)
 {
-    const uint8_t start = (uint8_t) (segmentIndex * TOUCHBAR_TOUCHES_PER_SEGMENT);
     uint16_t weightedSum = 0;
     uint8_t activeCount = 0;
 
-    for (uint8_t localIndex = 0; localIndex < TOUCHBAR_TOUCHES_PER_SEGMENT; localIndex++)
+    for (uint8_t localIndex = 0; localIndex < logicalCount; localIndex++)
     {
-        if (touchState & GetTouchBarLogicalBit((uint8_t) (start + localIndex)))
+        if (touchState & GetTouchBarLogicalBit(logicalPositions[localIndex]))
         {
             weightedSum += (uint16_t) localIndex * TOUCHBAR_POSITION_SCALE;
             activeCount++;
@@ -210,24 +217,46 @@ static int16_t GetTouchBarSegmentPosition(uint8_t touchState, uint8_t segmentInd
 }
 
 
+static uint8_t CountTouchBarEntryTouches(uint8_t touchState, uint8_t segmentIndex)
+{
+    return CountMappedTouchBarTouches(touchState,
+                                      TOUCHBAR_SEGMENT_ENTRY_TOUCH_MAP[segmentIndex],
+                                      TOUCHBAR_ENTRY_TOUCHES_PER_SEGMENT);
+}
+
+
+static int16_t GetTouchBarSegmentPosition(uint8_t touchState, uint8_t segmentIndex)
+{
+    return GetMappedTouchBarPosition(touchState,
+                                     TOUCHBAR_SEGMENT_TOUCH_MAP[segmentIndex],
+                                     TOUCHBAR_TOUCHES_PER_SEGMENT);
+}
+
+
+static int16_t GetTouchBarGlobalPosition(uint8_t touchState)
+{
+    static const uint8_t TOUCHBAR_GLOBAL_TOUCH_MAP[HWKeyboard::TOUCHPAD_NUMBER] = {0, 1, 2, 3, 4, 5};
+    return GetMappedTouchBarPosition(touchState, TOUCHBAR_GLOBAL_TOUCH_MAP, HWKeyboard::TOUCHPAD_NUMBER);
+}
+
+
 static uint8_t SelectTouchBarSegment(uint8_t touchState)
 {
-    uint8_t bestSegment = TOUCHBAR_INVALID_SEGMENT;
-    uint8_t bestTouchCount = 0;
+    const uint8_t leftEntryTouches = CountTouchBarEntryTouches(touchState, 0);
+    const uint8_t rightEntryTouches = CountTouchBarEntryTouches(touchState, 1);
 
-    for (uint8_t segmentIndex = 0; segmentIndex < TOUCHBAR_SEGMENT_COUNT; segmentIndex++)
-    {
-        const uint8_t touchCount = CountTouchBarSegmentTouches(touchState, segmentIndex);
-        if (touchCount == 0)
-            continue;
-        if (bestSegment == TOUCHBAR_INVALID_SEGMENT || touchCount > bestTouchCount)
-        {
-            bestSegment = segmentIndex;
-            bestTouchCount = touchCount;
-        }
-    }
+    if (leftEntryTouches == 0 && rightEntryTouches == 0)
+        return TOUCHBAR_INVALID_SEGMENT;
+    if (leftEntryTouches > rightEntryTouches)
+        return 0;
+    if (rightEntryTouches > leftEntryTouches)
+        return 1;
 
-    return bestSegment;
+    const int16_t globalPosition = GetTouchBarGlobalPosition(touchState);
+    if (globalPosition < 0)
+        return TOUCHBAR_INVALID_SEGMENT;
+
+    return globalPosition < (3 * TOUCHBAR_POSITION_SCALE) ? 0 : 1;
 }
 
 
