@@ -269,13 +269,17 @@ void HWKeyboard::Release(HWKeyboard::KeyCode_t _key)
 
 uint8_t HWKeyboard::GetTouchBarState(uint8_t _id)
 {
-    // Export touch points in logical left-to-right order.
-    uint8_t tmp = (remapBuffer[10] & 0b00000001) << 5 |
-                  (remapBuffer[10] & 0b00000010) << 3 |
-                  (remapBuffer[10] & 0b00000100) << 1 |
-                  (remapBuffer[10] & 0b00100000) >> 3 |
-                  (remapBuffer[10] & 0b00010000) >> 3 |
-                  (remapBuffer[10] & 0b00001000) >> 3;
+    // Raw touch bits are stored from low to high; export them as logical
+    // left-to-right positions in the same physical order.
+    const uint8_t rawState = remapBuffer[10] & 0b00111111;
+    uint8_t tmp = 0;
+
+    for (uint8_t i = 0; i < TOUCHPAD_NUMBER; i++)
+    {
+        if (rawState & (1U << i))
+            tmp |= (uint8_t) (1U << (TOUCHPAD_NUMBER - 1U - i));
+    }
+
     return _id == 0 ? tmp : (tmp & (1 << (_id - 1)));
 }
 
