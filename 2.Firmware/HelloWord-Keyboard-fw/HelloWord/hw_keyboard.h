@@ -63,7 +63,8 @@ public:
         EFFECT_RAINBOW_SWEEP = 0,
         EFFECT_REACTIVE,
         EFFECT_AURORA,
-        EFFECT_CONTOUR,
+        EFFECT_RIPPLE,
+        EFFECT_STATIC,
         EFFECT_COUNT
     };
 

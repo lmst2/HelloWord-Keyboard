@@ -429,50 +429,6 @@ static void SendPendingReports()
 }
 
 
-/* 3D noise for contour effect -----------------------------------------------*/
-static uint8_t noisePerm(uint8_t x)
-{
-    static const uint8_t p[] = {
-        151,160,137, 91, 90, 15,131, 13,201, 95, 96, 53,194,233,  7,225,
-        140, 36,103, 30, 69,142,  8, 99, 37,240, 21, 10, 23,190,  6,148,
-        247,120,234, 75,  0, 26,197, 62, 94,252,219,203,117, 35, 11, 32,
-         65,195, 76,204, 98, 57,227,186,132, 83,158, 87,144, 41, 82,167
-    };
-    return p[x & 0x3F];
-}
-
-
-static uint8_t lerp8(uint8_t a, uint8_t b, uint8_t t)
-{
-    return (uint8_t)(((uint32_t) a * (256 - t) + (uint32_t) b * t) >> 8);
-}
-
-
-static uint8_t valueNoise3D(uint16_t x, uint16_t y, uint16_t z)
-{
-    uint8_t ix = x >> 8, iy = y >> 8, iz = z >> 8;
-    uint8_t fx = x & 0xFF, fy = y & 0xFF, fz = z & 0xFF;
-
-    uint16_t fx2 = ((uint16_t) fx * fx) >> 8;
-    uint8_t sfx = (uint8_t)(3 * fx2 - 2 * ((fx2 * (uint16_t) fx) >> 8));
-    uint16_t fy2 = ((uint16_t) fy * fy) >> 8;
-    uint8_t sfy = (uint8_t)(3 * fy2 - 2 * ((fy2 * (uint16_t) fy) >> 8));
-    uint16_t fz2 = ((uint16_t) fz * fz) >> 8;
-    uint8_t sfz = (uint8_t)(3 * fz2 - 2 * ((fz2 * (uint16_t) fz) >> 8));
-
-    #define H3(a,b,c) noisePerm(noisePerm(noisePerm(a) + (b)) + (c))
-
-    uint8_t n00 = lerp8(H3(ix, iy, iz),     H3(ix+1, iy, iz),     sfx);
-    uint8_t n10 = lerp8(H3(ix, iy+1, iz),   H3(ix+1, iy+1, iz),   sfx);
-    uint8_t n01 = lerp8(H3(ix, iy, iz+1),   H3(ix+1, iy, iz+1),   sfx);
-    uint8_t n11 = lerp8(H3(ix, iy+1, iz+1), H3(ix+1, iy+1, iz+1), sfx);
-
-    #undef H3
-
-    return lerp8(lerp8(n00, n10, sfy), lerp8(n01, n11, sfy), sfz);
-}
-
-
 /* LED position utilities ----------------------------------------------------*/
 static void getLedPos(uint8_t idx, uint8_t& x, uint8_t& y)
 {
@@ -490,6 +446,14 @@ static void getLedPos(uint8_t idx, uint8_t& x, uint8_t& y)
     }
     else if (idx < 85) { y = 80; x = (uint8_t)(232 + (idx - 82) * 4); }
     else               { y = 96; x = (idx - 85) * 13; }
+}
+
+
+static uint8_t approxDist(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2)
+{
+    uint8_t dx = x1 > x2 ? x1 - x2 : x2 - x1;
+    uint8_t dy = y1 > y2 ? y1 - y2 : y2 - y1;
+    return dx > dy ? dx + ((dy * 3) >> 3) : dy + ((dx * 3) >> 3);
 }
 
 
@@ -580,25 +544,84 @@ static void RenderLightEffect()
             break;
         }
 
-        /* Contour: 3D value noise field, time as z-dimension */
-        case HWKeyboard::EFFECT_CONTOUR:
+        /* Ripple: colorful rings expand from pressed keys */
+        case HWKeyboard::EFFECT_RIPPLE:
         {
-            uint16_t tz = (uint16_t)(tick / 78);
+            static const uint8_t MAX_RIPPLES = 10;
+            static const uint16_t RIPPLE_LIFE = 1000;
+            static const uint8_t RING_WIDTH = 22;
+
+            static struct { uint8_t x, y; uint16_t startTick; } ripples[MAX_RIPPLES];
+            static uint8_t nextSlot = 0;
+            static uint8_t prevPressed[11] = {0};
+            static uint32_t lastDecay = 0;
+
+            if (tick - lastDecay >= 3)
+            {
+                lastDecay = tick;
+                for (uint8_t k = 0; k < HWKeyboard::KEY_NUMBER; k++)
+                    keyboard.keyBrightness[k] = qsub8(keyboard.keyBrightness[k], 10);
+            }
+
+            for (uint8_t k = 0; k < HWKeyboard::KEY_NUMBER; k++)
+            {
+                bool now = keyboard.keyBrightness[k] > 200;
+                bool was = prevPressed[k >> 3] & (1 << (k & 7));
+                if (now && !was)
+                {
+                    uint8_t px, py;
+                    getLedPos(k, px, py);
+                    ripples[nextSlot % MAX_RIPPLES] = {px, py, (uint16_t) tick};
+                    nextSlot++;
+                }
+                if (now) prevPressed[k >> 3] |= (1 << (k & 7));
+                else     prevPressed[k >> 3] &= ~(1 << (k & 7));
+            }
 
             for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
             {
                 uint8_t px, py;
                 getLedPos(i, px, py);
 
-                uint8_t wx = sin8((uint8_t)(py / 2 + (uint8_t)(tick / 70))) >> 3;
-                uint8_t wy = sin8((uint8_t)(px / 3 + (uint8_t)(tick / 90))) >> 3;
+                uint8_t bestBright = 0;
+                uint8_t bestHue = 0;
 
-                uint16_t nx = (uint16_t)(px + wx) * 3;
-                uint16_t ny = (uint16_t)(py + wy) * 5;
+                uint8_t count = nextSlot < MAX_RIPPLES ? nextSlot : MAX_RIPPLES;
+                for (uint8_t r = 0; r < count; r++)
+                {
+                    uint16_t elapsed = (uint16_t) tick - ripples[r].startTick;
+                    if (elapsed > RIPPLE_LIFE) continue;
 
-                uint8_t n = valueNoise3D(nx, ny, tz);
-                keyboard.SetRgbBufferByID(i, HsvToRgb(n, 240, 200));
+                    uint8_t radius = (uint8_t)((elapsed * 65) >> 8);
+                    uint8_t dist = approxDist(px, py, ripples[r].x, ripples[r].y);
+                    int16_t ringDelta = (int16_t) dist - radius;
+                    if (ringDelta < 0) ringDelta = -ringDelta;
+                    if (ringDelta >= RING_WIDTH) continue;
+
+                    uint8_t ring = (uint8_t)((RING_WIDTH - ringDelta) * (255 / RING_WIDTH));
+                    uint8_t fade = 255 - (uint8_t)(((uint32_t) elapsed * 65) >> 8);
+                    uint8_t bright = (uint8_t)(((uint16_t) ring * fade) >> 8);
+
+                    if (bright > bestBright)
+                    {
+                        bestBright = bright;
+                        bestHue = (uint8_t)(ripples[r].x + ripples[r].y * 2 + elapsed / 6);
+                    }
+                }
+
+                if (bestBright > 0)
+                    keyboard.SetRgbBufferByID(i, HsvToRgb(bestHue, 255, bestBright));
+                else
+                    keyboard.SetRgbBufferByID(i, {0, 0, 1});
             }
+            break;
+        }
+
+        /* Static: warm white */
+        case HWKeyboard::EFFECT_STATIC:
+        {
+            for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
+                keyboard.SetRgbBufferByID(i, {255, 180, 80});
             break;
         }
 
@@ -708,7 +731,8 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (keyboard.KeyPressed(HWKeyboard::NUM_2))        curFnCombo |= 0x010;
         if (keyboard.KeyPressed(HWKeyboard::NUM_3))        curFnCombo |= 0x020;
         if (keyboard.KeyPressed(HWKeyboard::NUM_4))        curFnCombo |= 0x040;
-        if (keyboard.KeyPressed(HWKeyboard::RIGHT_CTRL))   curFnCombo |= 0x080;
+        if (keyboard.KeyPressed(HWKeyboard::NUM_5))        curFnCombo |= 0x080;
+        if (keyboard.KeyPressed(HWKeyboard::RIGHT_CTRL))   curFnCombo |= 0x100;
 
         uint16_t justPressed = curFnCombo & ~prevFnCombo;
 
@@ -718,8 +742,9 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (justPressed & 0x008) keyboard.SetEffect(HWKeyboard::EFFECT_RAINBOW_SWEEP);
         if (justPressed & 0x010) keyboard.SetEffect(HWKeyboard::EFFECT_REACTIVE);
         if (justPressed & 0x020) keyboard.SetEffect(HWKeyboard::EFFECT_AURORA);
-        if (justPressed & 0x040) keyboard.SetEffect(HWKeyboard::EFFECT_CONTOUR);
-        if (justPressed & 0x080) CycleTouchBarMode();
+        if (justPressed & 0x040) keyboard.SetEffect(HWKeyboard::EFFECT_RIPPLE);
+        if (justPressed & 0x080) keyboard.SetEffect(HWKeyboard::EFFECT_STATIC);
+        if (justPressed & 0x100) CycleTouchBarMode();
 
         prevFnCombo = curFnCombo;
         ClearTouchBarActions();
