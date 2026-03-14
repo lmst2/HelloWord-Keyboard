@@ -91,7 +91,7 @@ public:
     void Release(KeyCode_t _key);
     uint8_t* GetHidReportBuffer(uint8_t _reportId);
     uint8_t  GetTouchBarState(uint8_t _id = 0);
-    void SetMousePan(int8_t _pan);
+    void SetMouseWheel(int8_t _wheel);
     void ClearMouseReport();
     void SetRgbBufferByID(uint8_t _keyId, Color_t _color, float _brightness = 1);
 

@@ -249,11 +249,11 @@ uint8_t HWKeyboard::GetTouchBarState(uint8_t _id)
 }
 
 
-void HWKeyboard::SetMousePan(int8_t _pan)
+void HWKeyboard::SetMouseWheel(int8_t _wheel)
 {
     uint8_t* report = GetHidReportBuffer(3);
     memset(report + 1, 0, MOUSE_REPORT_SIZE - 1);
-    report[5] = (uint8_t) _pan;
+    report[4] = (uint8_t) _wheel;
 }
 
 
