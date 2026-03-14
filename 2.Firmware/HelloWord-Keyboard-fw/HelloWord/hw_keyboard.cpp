@@ -189,8 +189,8 @@ bool HWKeyboard::KeyPressed(KeyCode_t _key)
 
     if (_key < RESERVED)
     {
-        index = _key / 8;
-        bitIndex = (_key + 8) % 8;
+        index = 0;
+        bitIndex = (int) _key + 8;
     } else
     {
         index = _key / 8 + 1;
@@ -207,8 +207,8 @@ void HWKeyboard::Press(HWKeyboard::KeyCode_t _key)
 
     if (_key < RESERVED)
     {
-        index = _key / 8;
-        bitIndex = (_key + 8) % 8;
+        index = 0;
+        bitIndex = (int) _key + 8;
     } else
     {
         index = _key / 8 + 1;
@@ -225,8 +225,8 @@ void HWKeyboard::Release(HWKeyboard::KeyCode_t _key)
 
     if (_key < RESERVED)
     {
-        index = _key / 8;
-        bitIndex = (_key + 8) % 8;
+        index = 0;
+        bitIndex = (int) _key + 8;
     } else
     {
         index = _key / 8 + 1;
@@ -239,12 +239,13 @@ void HWKeyboard::Release(HWKeyboard::KeyCode_t _key)
 
 uint8_t HWKeyboard::GetTouchBarState(uint8_t _id)
 {
+    // Export touch points in logical left-to-right order.
     uint8_t tmp = (remapBuffer[10] & 0b00000001) << 5 |
                   (remapBuffer[10] & 0b00000010) << 3 |
                   (remapBuffer[10] & 0b00000100) << 1 |
-                  (remapBuffer[10] & 0b00001000) >> 1 |
+                  (remapBuffer[10] & 0b00100000) >> 3 |
                   (remapBuffer[10] & 0b00010000) >> 3 |
-                  (remapBuffer[10] & 0b00100000) >> 5;
+                  (remapBuffer[10] & 0b00001000) >> 3;
     return _id == 0 ? tmp : (tmp & (1 << (_id - 1)));
 }
 

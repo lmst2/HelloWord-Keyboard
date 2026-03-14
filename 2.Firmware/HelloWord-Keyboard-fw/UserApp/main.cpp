@@ -75,7 +75,6 @@ static const int16_t TOUCHBAR_EDGE_REPEAT_THRESHOLD = 64;
 static const int16_t TOUCHBAR_PAN_DEADZONE = 64;
 static const int16_t TOUCHBAR_STEP_DISTANCE = 160;
 static const uint8_t SYNTHETIC_PULSE_FRAMES = 2;
-static const uint8_t TOUCHBAR_POSITION_INDEX_MAP[HWKeyboard::TOUCHPAD_NUMBER] = {0, 1, 2, 5, 4, 3};
 
 
 /* Utility Functions ---------------------------------------------------------*/
@@ -146,7 +145,7 @@ static int16_t GetTouchBarPosition(uint8_t touchState)
         const uint8_t bit = (uint8_t) (1U << (HWKeyboard::TOUCHPAD_NUMBER - 1U - i));
         if (touchState & bit)
         {
-            weightedSum += (uint16_t) TOUCHBAR_POSITION_INDEX_MAP[i] * TOUCHBAR_POSITION_SCALE;
+            weightedSum += (uint16_t) i * TOUCHBAR_POSITION_SCALE;
             activeCount++;
         }
     }
