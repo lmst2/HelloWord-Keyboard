@@ -269,18 +269,20 @@ void HWKeyboard::Release(HWKeyboard::KeyCode_t _key)
 
 uint8_t HWKeyboard::GetTouchBarState(uint8_t _id)
 {
-    // Raw touch bits are stored from low to high; export them as logical
-    // left-to-right positions in the same physical order.
+    // The touch IC reports points in a non-linear physical order.
+    // Each logical left-to-right position maps to one raw bit index.
+    static const uint8_t RAW_BIT_BY_LOGICAL_POSITION[TOUCHPAD_NUMBER] = {0, 5, 4, 3, 2, 1};
     const uint8_t rawState = remapBuffer[10] & 0b00111111;
-    uint8_t tmp = 0;
+    uint8_t logicalState = 0;
 
-    for (uint8_t i = 0; i < TOUCHPAD_NUMBER; i++)
+    for (uint8_t logicalPos = 0; logicalPos < TOUCHPAD_NUMBER; logicalPos++)
     {
-        if (rawState & (1U << i))
-            tmp |= (uint8_t) (1U << (TOUCHPAD_NUMBER - 1U - i));
+        const uint8_t rawBit = RAW_BIT_BY_LOGICAL_POSITION[logicalPos];
+        if (rawState & (1U << rawBit))
+            logicalState |= (uint8_t) (1U << (TOUCHPAD_NUMBER - 1U - logicalPos));
     }
 
-    return _id == 0 ? tmp : (tmp & (1 << (_id - 1)));
+    return _id == 0 ? logicalState : (logicalState & (1 << (_id - 1)));
 }
 
 
