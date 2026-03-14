@@ -174,6 +174,9 @@ uint8_t* HWKeyboard::GetHidReportBuffer(uint8_t _reportId)
         case 2:
             hidBuffer[KEY_REPORT_SIZE] = 2;
             return hidBuffer + KEY_REPORT_SIZE;
+        case 3:
+            hidBuffer[KEY_REPORT_SIZE + RAW_REPORT_SIZE] = 3;
+            return hidBuffer + KEY_REPORT_SIZE + RAW_REPORT_SIZE;
         default:
             return hidBuffer;
     }
@@ -243,6 +246,21 @@ uint8_t HWKeyboard::GetTouchBarState(uint8_t _id)
                   (remapBuffer[10] & 0b00010000) >> 3 |
                   (remapBuffer[10] & 0b00100000) >> 5;
     return _id == 0 ? tmp : (tmp & (1 << (_id - 1)));
+}
+
+
+void HWKeyboard::SetMousePan(int8_t _pan)
+{
+    uint8_t* report = GetHidReportBuffer(3);
+    memset(report + 1, 0, MOUSE_REPORT_SIZE - 1);
+    report[5] = (uint8_t) _pan;
+}
+
+
+void HWKeyboard::ClearMouseReport()
+{
+    uint8_t* report = GetHidReportBuffer(3);
+    memset(report + 1, 0, MOUSE_REPORT_SIZE - 1);
 }
 
 

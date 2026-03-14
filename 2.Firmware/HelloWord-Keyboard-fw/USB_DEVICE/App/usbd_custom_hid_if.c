@@ -133,13 +133,49 @@ __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[USBD_CUSTOM_HID_REPORT_DES
 #endif
         0xC0  ,                 //   End Collection
 
+        0x05, 0x01,             // Usage Page (Generic Desktop)
+        0x09, 0x02,             // Usage (Mouse)
+        0xA1, 0x01,             // Collection (Application)
+        0x85, 0x03,             //   REPORT_ID (3)
+        0x09, 0x01,             //   Usage (Pointer)
+        0xA1, 0x00,             //   Collection (Physical)
+        0x05, 0x09,             //     Usage Page (Button)
+        0x19, 0x01,             //     Usage Minimum (1)
+        0x29, 0x03,             //     Usage Maximum (3)
+        0x15, 0x00,             //     Logical Minimum (0)
+        0x25, 0x01,             //     Logical Maximum (1)
+        0x95, 0x03,             //     Report Count (3)
+        0x75, 0x01,             //     Report Size (1)
+        0x81, 0x02,             //     Input (Data,Var,Abs)
+        0x95, 0x01,             //     Report Count (1)
+        0x75, 0x05,             //     Report Size (5)
+        0x81, 0x03,             //     Input (Const,Var,Abs)
+        0x05, 0x01,             //     Usage Page (Generic Desktop)
+        0x09, 0x30,             //     Usage (X)
+        0x09, 0x31,             //     Usage (Y)
+        0x09, 0x38,             //     Usage (Wheel)
+        0x15, 0x81,             //     Logical Minimum (-127)
+        0x25, 0x7F,             //     Logical Maximum (127)
+        0x75, 0x08,             //     Report Size (8)
+        0x95, 0x03,             //     Report Count (3)
+        0x81, 0x06,             //     Input (Data,Var,Rel)
+        0x05, 0x0C,             //     Usage Page (Consumer)
+        0x0A, 0x38, 0x02,       //     Usage (AC Pan)
+        0x15, 0x81,             //     Logical Minimum (-127)
+        0x25, 0x7F,             //     Logical Maximum (127)
+        0x75, 0x08,             //     Report Size (8)
+        0x95, 0x01,             //     Report Count (1)
+        0x81, 0x06,             //     Input (Data,Var,Rel)
+        0xC0,                   //   End Collection
+        0xC0,                   // End Collection
+
 #if 1
         //	RAW HID
 	0x06, LSB(RAWHID_USAGE_PAGE), MSB(RAWHID_USAGE_PAGE),	// 30
 	0x0A, LSB(RAWHID_USAGE), MSB(RAWHID_USAGE),
 
 	0xA1, 0x01,				// Collection 0x01
-    0x85, 0x02,             // REPORT_ID (3)
+    0x85, 0x02,             // REPORT_ID (2)
 	0x75, 0x08,				// report size = 8 bits
 	0x15, 0x00,				// logical minimum = 0
 	0x26, 0xFF, 0x00,		// logical maximum = 255

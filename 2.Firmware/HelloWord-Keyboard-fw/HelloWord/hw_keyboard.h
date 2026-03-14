@@ -27,7 +27,8 @@ public:
     static const uint8_t LED_NUMBER = 104;
     static const uint16_t KEY_REPORT_SIZE = 1 + 16;
     static const uint16_t RAW_REPORT_SIZE = 1 + 32;
-    static const uint16_t HID_REPORT_SIZE = KEY_REPORT_SIZE + RAW_REPORT_SIZE;
+    static const uint16_t MOUSE_REPORT_SIZE = 1 + 5;
+    static const uint16_t HID_REPORT_SIZE = KEY_REPORT_SIZE + RAW_REPORT_SIZE + MOUSE_REPORT_SIZE;
 
     enum KeyCode_t : int16_t
     {
@@ -89,6 +90,8 @@ public:
     void Release(KeyCode_t _key);
     uint8_t* GetHidReportBuffer(uint8_t _reportId);
     uint8_t  GetTouchBarState(uint8_t _id = 0);
+    void SetMousePan(int8_t _pan);
+    void ClearMouseReport();
     void SetRgbBufferByID(uint8_t _keyId, Color_t _color, float _brightness = 1);
 
     void IncreaseBrightness();

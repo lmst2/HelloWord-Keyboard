@@ -12,6 +12,66 @@ static bool isSoftWareControlColor = false;
 static bool isReceiveSuccess = false;
 
 
+enum TouchBarMode_t : uint8_t
+{
+    TOUCHBAR_MODE_PAN = 0,
+    TOUCHBAR_MODE_APP_SWITCH,
+    TOUCHBAR_MODE_DESKTOP_SWITCH,
+    TOUCHBAR_MODE_COUNT
+};
+
+struct TouchBarSession_t
+{
+    TouchBarMode_t mode = TOUCHBAR_MODE_PAN;
+    bool isTouching = false;
+    bool isGestureActive = false;
+    bool isDesktopSeekMode = false;
+    uint32_t touchStartMs = 0;
+    uint32_t lastPanMs = 0;
+    uint32_t lastStepMs = 0;
+    int16_t anchorPosition = 0;
+    int16_t currentPosition = 0;
+    int16_t emittedSteps = 0;
+};
+
+struct SyntheticKeyState_t
+{
+    bool holdLeftAlt = false;
+    uint8_t leftShiftFrames = 0;
+    uint8_t leftCtrlFrames = 0;
+    uint8_t leftGuiFrames = 0;
+    uint8_t tabFrames = 0;
+    uint8_t leftArrowFrames = 0;
+    uint8_t rightArrowFrames = 0;
+};
+
+struct StatusBlinkState_t
+{
+    bool active = false;
+    uint8_t flashCount = 0;
+    uint32_t startMs = 0;
+};
+
+static TouchBarSession_t touchBarSession;
+static SyntheticKeyState_t syntheticKeys;
+static StatusBlinkState_t statusBlink;
+static uint8_t lastKeyboardReport[HWKeyboard::KEY_REPORT_SIZE]{};
+static uint8_t pendingMouseReport[HWKeyboard::MOUSE_REPORT_SIZE]{};
+static bool hasKeyboardReportSnapshot = false;
+static bool hasPendingMouseReport = false;
+
+static const uint32_t TOUCHBAR_ACTIVATION_MS = 100;
+static const uint32_t TOUCHBAR_DESKTOP_HOLD_MS = 1000;
+static const uint32_t TOUCHBAR_PAN_INTERVAL_MS = 12;
+static const uint32_t TOUCHBAR_STEP_INTERVAL_MS = 55;
+static const uint32_t STATUS_BLINK_PHASE_MS = 120;
+static const int16_t TOUCHBAR_POSITION_SCALE = 256;
+static const int16_t TOUCHBAR_DESKTOP_SWIPE_DISTANCE = 192;
+static const int16_t TOUCHBAR_PAN_DEADZONE = 64;
+static const int16_t TOUCHBAR_STEP_DISTANCE = 160;
+static const uint8_t SYNTHETIC_PULSE_FRAMES = 2;
+
+
 /* Utility Functions ---------------------------------------------------------*/
 static uint8_t sin8(uint8_t theta)
 {
@@ -61,6 +121,311 @@ static inline uint8_t qadd8(uint8_t a, uint8_t b)
 static inline uint8_t qsub8(uint8_t a, uint8_t b)
 {
     return a > b ? a - b : 0;
+}
+
+
+static inline int16_t abs16(int16_t value)
+{
+    return value >= 0 ? value : (int16_t) -value;
+}
+
+
+static int16_t GetTouchBarPosition(uint8_t touchState)
+{
+    uint16_t weightedSum = 0;
+    uint8_t activeCount = 0;
+
+    for (uint8_t i = 0; i < HWKeyboard::TOUCHPAD_NUMBER; i++)
+    {
+        const uint8_t bit = (uint8_t) (1U << (HWKeyboard::TOUCHPAD_NUMBER - 1U - i));
+        if (touchState & bit)
+        {
+            weightedSum += (uint16_t) i * TOUCHBAR_POSITION_SCALE;
+            activeCount++;
+        }
+    }
+
+    if (activeCount == 0)
+        return -1;
+
+    return (int16_t) (weightedSum / activeCount);
+}
+
+
+static void TriggerStatusBlink(uint8_t flashCount)
+{
+    statusBlink.active = flashCount > 0;
+    statusBlink.flashCount = flashCount;
+    statusBlink.startMs = HAL_GetTick();
+}
+
+
+static void ClearTouchBarActions()
+{
+    touchBarSession.isTouching = false;
+    touchBarSession.isGestureActive = false;
+    touchBarSession.isDesktopSeekMode = false;
+    touchBarSession.touchStartMs = 0;
+    touchBarSession.lastPanMs = 0;
+    touchBarSession.lastStepMs = 0;
+    touchBarSession.anchorPosition = 0;
+    touchBarSession.currentPosition = 0;
+    touchBarSession.emittedSteps = 0;
+    syntheticKeys.holdLeftAlt = false;
+}
+
+
+static void CycleTouchBarMode()
+{
+    touchBarSession.mode = (TouchBarMode_t) ((touchBarSession.mode + 1) % TOUCHBAR_MODE_COUNT);
+    TriggerStatusBlink((uint8_t) touchBarSession.mode + 1);
+}
+
+
+static void QueueMousePan(int8_t pan)
+{
+    if (pan == 0)
+        return;
+
+    keyboard.SetMousePan(pan);
+    memcpy(pendingMouseReport, keyboard.GetHidReportBuffer(3), HWKeyboard::MOUSE_REPORT_SIZE);
+    hasPendingMouseReport = true;
+    keyboard.ClearMouseReport();
+}
+
+
+static void ApplySyntheticKeys()
+{
+    if (syntheticKeys.holdLeftAlt)
+        keyboard.Press(HWKeyboard::LEFT_ALT);
+
+    if (syntheticKeys.leftShiftFrames > 0)
+    {
+        keyboard.Press(HWKeyboard::LEFT_SHIFT);
+        syntheticKeys.leftShiftFrames--;
+    }
+    if (syntheticKeys.leftCtrlFrames > 0)
+    {
+        keyboard.Press(HWKeyboard::LEFT_CTRL);
+        syntheticKeys.leftCtrlFrames--;
+    }
+    if (syntheticKeys.leftGuiFrames > 0)
+    {
+        keyboard.Press(HWKeyboard::LEFT_GUI);
+        syntheticKeys.leftGuiFrames--;
+    }
+    if (syntheticKeys.tabFrames > 0)
+    {
+        keyboard.Press(HWKeyboard::TAB);
+        syntheticKeys.tabFrames--;
+    }
+    if (syntheticKeys.leftArrowFrames > 0)
+    {
+        keyboard.Press(HWKeyboard::LEFT_ARROW);
+        syntheticKeys.leftArrowFrames--;
+    }
+    if (syntheticKeys.rightArrowFrames > 0)
+    {
+        keyboard.Press(HWKeyboard::RIGHT_ARROW);
+        syntheticKeys.rightArrowFrames--;
+    }
+}
+
+
+static void HandlePanMode(uint32_t nowMs)
+{
+    if (nowMs - touchBarSession.lastPanMs < TOUCHBAR_PAN_INTERVAL_MS)
+        return;
+
+    touchBarSession.lastPanMs = nowMs;
+
+    const int16_t displacement = touchBarSession.currentPosition - touchBarSession.anchorPosition;
+    const int16_t distance = abs16(displacement);
+    if (distance <= TOUCHBAR_PAN_DEADZONE)
+        return;
+
+    int16_t speed = 1 + (distance - TOUCHBAR_PAN_DEADZONE) / (TOUCHBAR_POSITION_SCALE / 2);
+    if (speed > 6)
+        speed = 6;
+
+    QueueMousePan((int8_t) (displacement > 0 ? speed : -speed));
+}
+
+
+static void QueueAppSwitchStep(int16_t direction)
+{
+    syntheticKeys.holdLeftAlt = true;
+    syntheticKeys.tabFrames = SYNTHETIC_PULSE_FRAMES;
+
+    if (direction < 0)
+        syntheticKeys.leftShiftFrames = SYNTHETIC_PULSE_FRAMES;
+}
+
+
+static void HandleAppSwitchMode(uint32_t nowMs)
+{
+    const int16_t displacement = touchBarSession.currentPosition - touchBarSession.anchorPosition;
+    const int16_t targetSteps = displacement / TOUCHBAR_STEP_DISTANCE;
+
+    if (targetSteps == touchBarSession.emittedSteps)
+        return;
+    if (nowMs - touchBarSession.lastStepMs < TOUCHBAR_STEP_INTERVAL_MS)
+        return;
+
+    touchBarSession.lastStepMs = nowMs;
+
+    if (targetSteps > touchBarSession.emittedSteps)
+    {
+        QueueAppSwitchStep(1);
+        touchBarSession.emittedSteps++;
+    }
+    else
+    {
+        QueueAppSwitchStep(-1);
+        touchBarSession.emittedSteps--;
+    }
+}
+
+
+static void QueueDesktopSwitchStep(int16_t direction)
+{
+    syntheticKeys.leftCtrlFrames = SYNTHETIC_PULSE_FRAMES;
+    syntheticKeys.leftGuiFrames = SYNTHETIC_PULSE_FRAMES;
+
+    if (direction < 0)
+        syntheticKeys.leftArrowFrames = SYNTHETIC_PULSE_FRAMES;
+    else
+        syntheticKeys.rightArrowFrames = SYNTHETIC_PULSE_FRAMES;
+}
+
+
+static void FinalizeDesktopSwitchGesture()
+{
+    if (!touchBarSession.isGestureActive || touchBarSession.isDesktopSeekMode)
+        return;
+
+    const int16_t displacement = touchBarSession.currentPosition - touchBarSession.anchorPosition;
+    if (abs16(displacement) < TOUCHBAR_DESKTOP_SWIPE_DISTANCE)
+        return;
+
+    QueueDesktopSwitchStep(displacement > 0 ? 1 : -1);
+}
+
+
+static void HandleDesktopSwitchMode(uint32_t nowMs)
+{
+    if (!touchBarSession.isDesktopSeekMode)
+    {
+        if (nowMs - touchBarSession.touchStartMs < TOUCHBAR_DESKTOP_HOLD_MS)
+            return;
+
+        touchBarSession.isDesktopSeekMode = true;
+        touchBarSession.anchorPosition = touchBarSession.currentPosition;
+        touchBarSession.emittedSteps = 0;
+        touchBarSession.lastStepMs = nowMs;
+        return;
+    }
+
+    const int16_t displacement = touchBarSession.currentPosition - touchBarSession.anchorPosition;
+    const int16_t targetSteps = displacement / TOUCHBAR_STEP_DISTANCE;
+
+    if (targetSteps == touchBarSession.emittedSteps)
+        return;
+    if (nowMs - touchBarSession.lastStepMs < TOUCHBAR_STEP_INTERVAL_MS)
+        return;
+
+    touchBarSession.lastStepMs = nowMs;
+
+    if (targetSteps > touchBarSession.emittedSteps)
+    {
+        QueueDesktopSwitchStep(1);
+        touchBarSession.emittedSteps++;
+    }
+    else
+    {
+        QueueDesktopSwitchStep(-1);
+        touchBarSession.emittedSteps--;
+    }
+}
+
+
+static void ProcessTouchBar(uint32_t nowMs)
+{
+    const uint8_t touchState = keyboard.GetTouchBarState();
+    const int16_t touchPosition = GetTouchBarPosition(touchState);
+
+    if (touchPosition < 0)
+    {
+        if (touchBarSession.mode == TOUCHBAR_MODE_DESKTOP_SWITCH)
+            FinalizeDesktopSwitchGesture();
+        ClearTouchBarActions();
+        return;
+    }
+
+    touchBarSession.currentPosition = touchPosition;
+
+    if (!touchBarSession.isTouching)
+    {
+        touchBarSession.isTouching = true;
+        touchBarSession.touchStartMs = nowMs;
+        touchBarSession.anchorPosition = touchPosition;
+        touchBarSession.currentPosition = touchPosition;
+        touchBarSession.emittedSteps = 0;
+        touchBarSession.isDesktopSeekMode = false;
+        touchBarSession.lastPanMs = nowMs;
+        touchBarSession.lastStepMs = nowMs;
+        syntheticKeys.holdLeftAlt = false;
+        return;
+    }
+
+    if (!touchBarSession.isGestureActive)
+    {
+        if (nowMs - touchBarSession.touchStartMs < TOUCHBAR_ACTIVATION_MS)
+            return;
+
+        touchBarSession.isGestureActive = true;
+    }
+
+    switch (touchBarSession.mode)
+    {
+        case TOUCHBAR_MODE_PAN:
+            HandlePanMode(nowMs);
+            break;
+        case TOUCHBAR_MODE_APP_SWITCH:
+            HandleAppSwitchMode(nowMs);
+            break;
+        case TOUCHBAR_MODE_DESKTOP_SWITCH:
+            HandleDesktopSwitchMode(nowMs);
+            break;
+        default:
+            break;
+    }
+}
+
+
+static void SendPendingReports()
+{
+    if (hasPendingMouseReport)
+    {
+        if (USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS,
+                                       pendingMouseReport,
+                                       HWKeyboard::MOUSE_REPORT_SIZE) == USBD_OK)
+            hasPendingMouseReport = false;
+        return;
+    }
+
+    uint8_t* keyboardReport = keyboard.GetHidReportBuffer(1);
+    if (!hasKeyboardReportSnapshot ||
+        memcmp(lastKeyboardReport, keyboardReport, HWKeyboard::KEY_REPORT_SIZE) != 0)
+    {
+        if (USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS,
+                                       keyboardReport,
+                                       HWKeyboard::KEY_REPORT_SIZE) == USBD_OK)
+        {
+            memcpy(lastKeyboardReport, keyboardReport, HWKeyboard::KEY_REPORT_SIZE);
+            hasKeyboardReportSnapshot = true;
+        }
+    }
 }
 
 
@@ -249,11 +614,22 @@ static const uint8_t STATUS_LED_COUNT = 3;
 
 static void UpdateStatusLEDs()
 {
-    HWKeyboard::Color_t c = keyboard.isCapsLocked
-                            ? HWKeyboard::Color_t{255, 255, 255}
-                            : HWKeyboard::Color_t{0, 0, 0};
+    const HWKeyboard::Color_t baseColor = keyboard.isCapsLocked
+                                          ? HWKeyboard::Color_t{180, 0, 255}
+                                          : HWKeyboard::Color_t{255, 255, 255};
+    HWKeyboard::Color_t currentColor = baseColor;
+
+    if (statusBlink.active)
+    {
+        const uint32_t phase = (HAL_GetTick() - statusBlink.startMs) / STATUS_BLINK_PHASE_MS;
+        if (phase >= (uint32_t) statusBlink.flashCount * 2)
+            statusBlink.active = false;
+        else if ((phase & 0x01U) == 0)
+            currentColor = HWKeyboard::Color_t{0, 255, 0};
+    }
+
     for (uint8_t i = 0; i < STATUS_LED_COUNT; i++)
-        keyboard.SetRgbBufferByID(STATUS_LED_START + i, c);
+        keyboard.SetRgbBufferByID(STATUS_LED_START + i, currentColor);
 }
 
 
@@ -286,16 +662,20 @@ void Main()
 
     while (true)
     {
+        if (!isSoftWareControlColor)
+        {
+            RenderLightEffect();
+        }
+
+        UpdateStatusLEDs();
+
         if (isReceiveSuccess)
         {
             keyboard.SyncLights();
             isReceiveSuccess = false;
         }
-
-        if (!isSoftWareControlColor)
+        else
         {
-            RenderLightEffect();
-            UpdateStatusLEDs();
             keyboard.SyncLights();
         }
 
@@ -311,8 +691,8 @@ extern "C" void OnTimerCallback() // 1000Hz callback
     keyboard.ApplyDebounceFilter(100);
     keyboard.ApplyKeyDebounce(8);
 
-    bool fnPressed = keyboard.FnPressed();
     keyboard.Remap(1);
+    bool fnPressed = keyboard.FnPressed();
     keyboard.UpdateKeyPressState();
 
     static uint16_t prevFnCombo = 0;
@@ -328,6 +708,7 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (keyboard.KeyPressed(HWKeyboard::NUM_2))        curFnCombo |= 0x010;
         if (keyboard.KeyPressed(HWKeyboard::NUM_3))        curFnCombo |= 0x020;
         if (keyboard.KeyPressed(HWKeyboard::NUM_4))        curFnCombo |= 0x040;
+        if (keyboard.KeyPressed(HWKeyboard::RIGHT_CTRL))   curFnCombo |= 0x080;
 
         uint16_t justPressed = curFnCombo & ~prevFnCombo;
 
@@ -338,8 +719,10 @@ extern "C" void OnTimerCallback() // 1000Hz callback
         if (justPressed & 0x010) keyboard.SetEffect(HWKeyboard::EFFECT_REACTIVE);
         if (justPressed & 0x020) keyboard.SetEffect(HWKeyboard::EFFECT_AURORA);
         if (justPressed & 0x040) keyboard.SetEffect(HWKeyboard::EFFECT_CONTOUR);
+        if (justPressed & 0x080) CycleTouchBarMode();
 
         prevFnCombo = curFnCombo;
+        ClearTouchBarActions();
 
         uint8_t* report = keyboard.GetHidReportBuffer(1);
         memset(report + 1, 0, HWKeyboard::KEY_REPORT_SIZE - 1);
@@ -347,11 +730,11 @@ extern "C" void OnTimerCallback() // 1000Hz callback
     else
     {
         prevFnCombo = 0;
+        ProcessTouchBar(HAL_GetTick());
+        ApplySyntheticKeys();
     }
 
-    USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS,
-                               keyboard.GetHidReportBuffer(1),
-                               HWKeyboard::KEY_REPORT_SIZE);
+    SendPendingReports();
 }
 
 
