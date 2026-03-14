@@ -94,12 +94,15 @@ public:
     void SetMouseWheel(int8_t _wheel);
     void ClearMouseReport();
     void SetRgbBufferByID(uint8_t _keyId, Color_t _color, float _brightness = 1);
+    void ApplyStoredRgbByID(uint8_t _keyId, float _brightness = 1);
+    void TurnOffRgbOutputByID(uint8_t _keyId);
 
     void IncreaseBrightness();
     void DecreaseBrightness();
     void SetEffect(LightEffect_t _effect);
     void NextEffect();
     void UpdateKeyPressState();
+    bool HasAnyPhysicalInput() const;
 
 
     int16_t keyMap[5][IO_NUMBER] = {
@@ -143,9 +146,12 @@ private:
     uint8_t debounceBuffer[IO_NUMBER / 8 + 1]{};
     uint8_t hidBuffer[HID_REPORT_SIZE]{};
     uint8_t remapBuffer[IO_NUMBER / 8]{};
+    Color_t ledColors[LED_NUMBER]{};
     uint8_t rgbBuffer[LED_NUMBER][3][8]{};
     uint8_t wsCommit[64] = {0};
     uint8_t brightnessPreDiv = 2;
+
+    void EncodeRgbBufferByID(uint8_t _keyId, Color_t _color, float _brightness);
 };
 
 

@@ -56,25 +56,41 @@ struct StatusBlinkState_t
     uint32_t startMs = 0;
 };
 
+struct SleepState_t
+{
+    volatile bool isSleeping = false;
+    volatile bool isFadeOutActive = false;
+    volatile uint32_t lastActivityMs = 0;
+    volatile uint32_t fadeStartMs = 0;
+};
+
 static TouchBarSession_t touchBarSession;
 static SyntheticKeyState_t syntheticKeys;
 static StatusBlinkState_t statusBlink;
+static SleepState_t sleepState;
 static uint8_t lastKeyboardReport[HWKeyboard::KEY_REPORT_SIZE]{};
 static uint8_t pendingMouseReport[HWKeyboard::MOUSE_REPORT_SIZE]{};
 static bool hasKeyboardReportSnapshot = false;
 static bool hasPendingMouseReport = false;
 
+static const uint8_t STATUS_LED_START = 82;
+static const uint8_t STATUS_LED_COUNT = 3;
 static const uint32_t TOUCHBAR_ACTIVATION_MS = 20;
 static const uint32_t TOUCHBAR_DESKTOP_HOLD_MS = 1000;
 static const uint32_t TOUCHBAR_PAN_INTERVAL_MS = 12;
 static const uint32_t TOUCHBAR_STEP_INTERVAL_MS = 55;
 static const uint32_t STATUS_BLINK_PHASE_MS = 120;
+static const uint32_t SLEEP_IDLE_TIMEOUT_MS = 300000;
+static const uint32_t SLEEP_FADE_OUT_MS = 800;
+static const uint32_t SLEEP_BREATHE_PERIOD_MS = 1200;
 static const int16_t TOUCHBAR_POSITION_SCALE = 256;
 static const int16_t TOUCHBAR_DESKTOP_SWIPE_DISTANCE = 192;
 static const int16_t TOUCHBAR_EDGE_REPEAT_THRESHOLD = 64;
 static const int16_t TOUCHBAR_PAN_DEADZONE = 64;
 static const int16_t TOUCHBAR_STEP_DISTANCE = 160;
 static const uint8_t SYNTHETIC_PULSE_FRAMES = 2;
+static const float SLEEP_STATUS_MIN_BRIGHTNESS = 0.04f;
+static const float SLEEP_STATUS_MAX_BRIGHTNESS = 0.14f;
 
 
 /* Utility Functions ---------------------------------------------------------*/
@@ -162,6 +178,62 @@ static void TriggerStatusBlink(uint8_t flashCount)
     statusBlink.active = flashCount > 0;
     statusBlink.flashCount = flashCount;
     statusBlink.startMs = HAL_GetTick();
+}
+
+
+static void UpdateSleepState(uint32_t nowMs, bool hasPhysicalInput)
+{
+    if (hasPhysicalInput)
+    {
+        sleepState.lastActivityMs = nowMs;
+        sleepState.isFadeOutActive = false;
+        sleepState.isSleeping = false;
+        return;
+    }
+
+    if (sleepState.isSleeping)
+        return;
+
+    if (sleepState.isFadeOutActive)
+    {
+        if (nowMs - sleepState.fadeStartMs >= SLEEP_FADE_OUT_MS)
+        {
+            sleepState.isFadeOutActive = false;
+            sleepState.isSleeping = true;
+        }
+        return;
+    }
+
+    if (nowMs - sleepState.lastActivityMs >= SLEEP_IDLE_TIMEOUT_MS)
+    {
+        sleepState.isFadeOutActive = true;
+        sleepState.fadeStartMs = nowMs;
+    }
+}
+
+
+static float GetSleepFadeScale(uint32_t nowMs)
+{
+    if (sleepState.isSleeping)
+        return 0.0f;
+
+    if (!sleepState.isFadeOutActive)
+        return 1.0f;
+
+    const uint32_t elapsed = nowMs - sleepState.fadeStartMs;
+    if (elapsed >= SLEEP_FADE_OUT_MS)
+        return 0.0f;
+
+    return 1.0f - (float) elapsed / (float) SLEEP_FADE_OUT_MS;
+}
+
+
+static float GetSleepPulseBrightness(uint32_t nowMs)
+{
+    const uint32_t phaseMs = nowMs % SLEEP_BREATHE_PERIOD_MS;
+    const uint8_t wave = sin8((uint8_t) (((phaseMs * 256UL) / SLEEP_BREATHE_PERIOD_MS) + 192UL));
+    return SLEEP_STATUS_MIN_BRIGHTNESS +
+           ((float) wave / 255.0f) * (SLEEP_STATUS_MAX_BRIGHTNESS - SLEEP_STATUS_MIN_BRIGHTNESS);
 }
 
 
@@ -579,7 +651,7 @@ static void RenderLightEffect()
                     keyboard.SetRgbBufferByID(i, HsvToRgb(hue, sat, b));
                 } else
                 {
-                    keyboard.SetRgbBufferByID(i, {0, 0, 1});
+                    keyboard.SetRgbBufferByID(i, {0, 0, 0});
                 }
             }
             break;
@@ -682,7 +754,7 @@ static void RenderLightEffect()
                 if (bestBright > 0)
                     keyboard.SetRgbBufferByID(i, HsvToRgb(bestHue, 255, bestBright));
                 else
-                    keyboard.SetRgbBufferByID(i, {0, 0, 1});
+                    keyboard.SetRgbBufferByID(i, {0, 0, 0});
             }
             break;
         }
@@ -702,11 +774,43 @@ static void RenderLightEffect()
 
 
 /* Status Indicator LEDs (82-84, near arrow keys) ---------------------------*/
-static const uint8_t STATUS_LED_START = 82;
-static const uint8_t STATUS_LED_COUNT = 3;
-
-static void UpdateStatusLEDs()
+static void ApplySleepLighting(uint32_t nowMs)
 {
+    const float sleepScale = GetSleepFadeScale(nowMs);
+    if (sleepScale >= 1.0f)
+        return;
+
+    for (uint8_t i = 0; i < HWKeyboard::LED_NUMBER; i++)
+    {
+        if (i >= STATUS_LED_START && i < STATUS_LED_START + STATUS_LED_COUNT)
+            continue;
+
+        if (sleepScale <= 0.0f)
+            keyboard.TurnOffRgbOutputByID(i);
+        else
+            keyboard.ApplyStoredRgbByID(i, sleepScale);
+    }
+}
+
+
+static void UpdateStatusLEDs(uint32_t nowMs)
+{
+    if (sleepState.isSleeping)
+    {
+        const HWKeyboard::Color_t sleepColor{255, 255, 255};
+        const float sleepBrightness = GetSleepPulseBrightness(nowMs);
+        for (uint8_t i = 0; i < STATUS_LED_COUNT; i++)
+            keyboard.SetRgbBufferByID(STATUS_LED_START + i, sleepColor, sleepBrightness);
+        return;
+    }
+
+    if (keyboard.brightnessLevel == 0)
+    {
+        for (uint8_t i = 0; i < STATUS_LED_COUNT; i++)
+            keyboard.TurnOffRgbOutputByID(STATUS_LED_START + i);
+        return;
+    }
+
     const HWKeyboard::Color_t baseColor = keyboard.isCapsLocked
                                           ? HWKeyboard::Color_t{180, 0, 255}
                                           : HWKeyboard::Color_t{255, 255, 255};
@@ -714,7 +818,7 @@ static void UpdateStatusLEDs()
 
     if (statusBlink.active)
     {
-        const uint32_t phase = (HAL_GetTick() - statusBlink.startMs) / STATUS_BLINK_PHASE_MS;
+        const uint32_t phase = (nowMs - statusBlink.startMs) / STATUS_BLINK_PHASE_MS;
         if (phase >= (uint32_t) statusBlink.flashCount * 2)
             statusBlink.active = false;
         else if ((phase & 0x01U) == 0)
@@ -755,12 +859,14 @@ void Main()
 
     while (true)
     {
+        const uint32_t nowMs = HAL_GetTick();
         if (!isSoftWareControlColor)
         {
             RenderLightEffect();
         }
 
-        UpdateStatusLEDs();
+        ApplySleepLighting(nowMs);
+        UpdateStatusLEDs(nowMs);
 
         if (isReceiveSuccess)
         {
@@ -787,6 +893,8 @@ extern "C" void OnTimerCallback() // 1000Hz callback
     keyboard.Remap(1);
     bool fnPressed = keyboard.FnPressed();
     keyboard.UpdateKeyPressState();
+    const uint32_t nowMs = HAL_GetTick();
+    UpdateSleepState(nowMs, keyboard.HasAnyPhysicalInput());
 
     static uint16_t prevFnCombo = 0;
 
@@ -825,7 +933,7 @@ extern "C" void OnTimerCallback() // 1000Hz callback
     else
     {
         prevFnCombo = 0;
-        ProcessTouchBar(HAL_GetTick());
+        ProcessTouchBar(nowMs);
         ApplySyntheticKeys();
     }
 

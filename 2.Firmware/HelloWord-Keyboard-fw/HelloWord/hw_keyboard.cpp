@@ -136,19 +136,49 @@ bool HWKeyboard::FnPressed()
 }
 
 
-void HWKeyboard::SetRgbBufferByID(uint8_t _keyId, HWKeyboard::Color_t _color, float _brightness)
+void HWKeyboard::EncodeRgbBufferByID(uint8_t _keyId, HWKeyboard::Color_t _color, float _brightness)
 {
-    // To ensure there's no sequence zero bits, otherwise will case ws2812b protocol error.
-    if (_color.b < 1)_color.b = 1;
+    if (_brightness <= 0.0f || (_color.r == 0 && _color.g == 0 && _color.b == 0))
+    {
+        TurnOffRgbOutputByID(_keyId);
+        return;
+    }
+
+    // Keep the legacy ws2812 workaround for lit LEDs, but bypass it for a true off state.
+    if (_color.b < 1) _color.b = 1;
+
+    const uint8_t green = (uint8_t) ((float) _color.g * _brightness) >> brightnessPreDiv;
+    const uint8_t red = (uint8_t) ((float) _color.r * _brightness) >> brightnessPreDiv;
+    const uint8_t blue = (uint8_t) ((float) _color.b * _brightness) >> brightnessPreDiv;
 
     for (int i = 0; i < 8; i++)
     {
-        rgbBuffer[_keyId][0][i] =
-            ((uint8_t) ((float) _color.g * _brightness) >> brightnessPreDiv) & (0x80 >> i) ? WS_HIGH : WS_LOW;
-        rgbBuffer[_keyId][1][i] =
-            ((uint8_t) ((float) _color.r * _brightness) >> brightnessPreDiv) & (0x80 >> i) ? WS_HIGH : WS_LOW;
-        rgbBuffer[_keyId][2][i] =
-            ((uint8_t) ((float) _color.b * _brightness) >> brightnessPreDiv) & (0x80 >> i) ? WS_HIGH : WS_LOW;
+        rgbBuffer[_keyId][0][i] = (green & (0x80 >> i)) ? WS_HIGH : WS_LOW;
+        rgbBuffer[_keyId][1][i] = (red & (0x80 >> i)) ? WS_HIGH : WS_LOW;
+        rgbBuffer[_keyId][2][i] = (blue & (0x80 >> i)) ? WS_HIGH : WS_LOW;
+    }
+}
+
+
+void HWKeyboard::SetRgbBufferByID(uint8_t _keyId, HWKeyboard::Color_t _color, float _brightness)
+{
+    ledColors[_keyId] = _color;
+    EncodeRgbBufferByID(_keyId, _color, _brightness);
+}
+
+
+void HWKeyboard::ApplyStoredRgbByID(uint8_t _keyId, float _brightness)
+{
+    EncodeRgbBufferByID(_keyId, ledColors[_keyId], _brightness);
+}
+
+
+void HWKeyboard::TurnOffRgbOutputByID(uint8_t _keyId)
+{
+    for (uint8_t channel = 0; channel < 3; channel++)
+    {
+        for (uint8_t bit = 0; bit < 8; bit++)
+            rgbBuffer[_keyId][channel][bit] = WS_LOW;
     }
 }
 
@@ -321,6 +351,18 @@ void HWKeyboard::UpdateKeyPressState()
             stableCount[i] = 0;
         }
     }
+}
+
+
+bool HWKeyboard::HasAnyPhysicalInput() const
+{
+    for (uint8_t i = 0; i < IO_NUMBER / 8; i++)
+    {
+        if (remapBuffer[i] != 0)
+            return true;
+    }
+
+    return false;
 }
 
 
