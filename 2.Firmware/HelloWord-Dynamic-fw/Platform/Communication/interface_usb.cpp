@@ -5,6 +5,7 @@
 #include "usbd_cdc_if.h"
 #include "usb_device.h"
 #include "interface_usb.hpp"
+#include <cstring>
 
 osThreadId_t usbServerTaskHandle;
 USBStats_t usb_stats_ = {0};
@@ -81,6 +82,51 @@ private:
     PacketSink &output_;
 } usb_stream_output(usb_packet_output_cdc);
 
+namespace {
+
+// Host may send one logical [LEN][LEN][CMD][PAYLOAD...] frame across multiple 64-byte USB OUT packets.
+// Old logic used (rx_buf[0] < 0x30) to pick "binary" — that rejects valid lengths whose low byte is >= 0x30
+// (e.g. PC_HUB_EINK_IMAGE with msgLen=131, first byte 0x83) and never reassembles chunks.
+constexpr size_t kHubCdcRxAccumCap = 1024;
+constexpr uint16_t kMaxHubCdcBinaryInnerLen = 768; // cmd + payload after the 2-byte LE length
+
+static uint8_t s_hubCdcRxAccum[kHubCdcRxAccumCap];
+static size_t s_hubCdcRxAccumLen = 0;
+
+static void HubCdcAppendAndDispatch(const uint8_t* data, uint32_t len)
+{
+    if (!data || len == 0) {
+        return;
+    }
+    if (s_hubCdcRxAccumLen + len > kHubCdcRxAccumCap) {
+        s_hubCdcRxAccumLen = 0; // drop partial frame on overflow
+    }
+    std::memcpy(s_hubCdcRxAccum + s_hubCdcRxAccumLen, data, len);
+    s_hubCdcRxAccumLen += len;
+
+    while (s_hubCdcRxAccumLen >= 3) {
+        uint16_t msgLen = (uint16_t)s_hubCdcRxAccum[0] | ((uint16_t)s_hubCdcRxAccum[1] << 8);
+        if (msgLen == 0 || msgLen > kMaxHubCdcBinaryInnerLen) {
+            // Not a plausible binary frame — legacy ASCII on this endpoint
+            ASCII_protocol_parse_stream(s_hubCdcRxAccum, s_hubCdcRxAccumLen, usb_stream_output);
+            s_hubCdcRxAccumLen = 0;
+            break;
+        }
+        const size_t need = 2u + (size_t)msgLen;
+        if (s_hubCdcRxAccumLen < need) {
+            break; // wait for remaining USB OUT chunks
+        }
+        HubUsb_OnCdcData(s_hubCdcRxAccum, (uint16_t)need);
+        const size_t rest = s_hubCdcRxAccumLen - need;
+        if (rest > 0) {
+            std::memmove(s_hubCdcRxAccum, s_hubCdcRxAccum + need, rest);
+        }
+        s_hubCdcRxAccumLen = rest;
+    }
+}
+
+} // namespace
+
 // This is used by the printf feature. Hence the above statics, and below seemingly random ptr (it's externed)
 // TODO: less spaghetti code
 StreamSink *usb_stream_output_ptr = &usb_stream_output;
@@ -134,12 +180,7 @@ static void UsbServerTask(void *ctx)
             {
                 CDC_interface.data_pending = false;
 
-                // Route to new protocol handler if first byte looks like a length prefix
-                if (CDC_interface.rx_len >= 3 && CDC_interface.rx_buf[0] < 0x30) {
-                    HubUsb_OnCdcData(CDC_interface.rx_buf, CDC_interface.rx_len);
-                } else {
-                    ASCII_protocol_parse_stream(CDC_interface.rx_buf, CDC_interface.rx_len, usb_stream_output);
-                }
+                HubCdcAppendAndDispatch(CDC_interface.rx_buf, CDC_interface.rx_len);
                 USBD_CDC_ReceivePacket(&hUsbDeviceFS, CDC_interface.out_ep);
             }
 

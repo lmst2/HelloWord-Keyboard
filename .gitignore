@@ -20,6 +20,13 @@ Thumbs.db
 *.so
 *.dylib
 2.Firmware/_Release/hw75_dynamic@B-zmk.bin
+3.Software/pc-app/node_modules/
+3.Software/pc-app/package-lock.json
+3.Software/pc-app/src-tauri/Cargo.lock
+3.Software/pc-app/dist/
+3.Software/pc-app/src-tauri/gen/
+3.Software/pc-app/src-tauri/target/
+
 
 # Libs
 zmk-config_helloword_hw-75/

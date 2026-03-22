@@ -37,7 +37,7 @@ pub async fn eink_upload_image(
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
     log::info!(
-        "eink_upload_image: done slot={} total_pages={} (CDC writes only; no per-page HUB ack)",
+        "eink_upload_image: done slot={} total_pages={}",
         slot,
         pages.len()
     );
@@ -67,7 +67,7 @@ pub async fn eink_switch_app(state: State<'_, SharedState>, app_id: u8) -> Resul
     let mut dm = s.device_mgr.lock().await;
     dm.hub_switch_eink_app(app_id)?;
     log::info!(
-        "eink_switch_app: CDC write ok app_id=0x{:02X} (no HUB ack in protocol)",
+        "eink_switch_app: hub ack ok app_id=0x{:02X}",
         app_id
     );
     Ok(())

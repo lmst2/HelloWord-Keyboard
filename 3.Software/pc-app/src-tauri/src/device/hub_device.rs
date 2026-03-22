@@ -156,7 +156,7 @@ impl HubDevice {
         self.send(PC_HUB_PROFILE_LIST, &[])?;
         self.recv_expect(
             HUB_PC_PROFILE_LIST,
-            Duration::from_millis(3000),
+            Duration::from_millis(8000),
         )
     }
 
@@ -197,7 +197,15 @@ impl HubDevice {
     }
 
     pub fn switch_eink_app(&mut self, app_id: u8) -> Result<(), String> {
-        self.send(PC_HUB_EINK_SWITCH, &[app_id])
+        self.send(PC_HUB_EINK_SWITCH, &[app_id])?;
+        let resp = self.recv_expect(HUB_PC_ACK, Duration::from_millis(2000))?;
+        if resp.payload.first() == Some(&PC_HUB_EINK_SWITCH)
+            && resp.payload.get(1) == Some(&RESULT_OK)
+        {
+            Ok(())
+        } else {
+            Err(format!("Hub e-ink switch failed: {:?}", resp.payload))
+        }
     }
 
     pub fn enter_dfu_kb(&mut self) -> Result<(), String> {
