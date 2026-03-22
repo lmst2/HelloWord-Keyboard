@@ -1,4 +1,5 @@
 #include "common_inc.h"
+#include "usart.h"
 #include "Platform/Sensor/Encoder/encoder.h"
 #include "Platform/Driver/driver.h"
 #include "Ctrl/Motor/motor.h"

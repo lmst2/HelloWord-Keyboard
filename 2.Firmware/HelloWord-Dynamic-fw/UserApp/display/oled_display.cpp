@@ -7,7 +7,7 @@ void OledDisplay::Render(uint32_t nowMs)
 {
     if (!u8g2_ || !mgr_) return;
 
-    u8g2_->clearBuffer();
+    u8g2_->ClearBuffer();
 
     if (mgr_->IsInSubmenu()) {
         RenderSubmenuList();
@@ -17,16 +17,16 @@ void OledDisplay::Render(uint32_t nowMs)
         RenderAppList();
     }
 
-    u8g2_->sendBuffer();
+    u8g2_->SendBuffer();
 }
 
 void OledDisplay::RenderAppName(const char* name)
 {
     if (!name) return;
     // Draw app name at top, small font
-    u8g2_->setFont(u8g2_font_5x7_tr);
-    u8g2_->drawStr(1, 7, name);
-    u8g2_->drawHLine(0, 9, 32);
+    u8g2_->SetFont(u8g2_font_5x7_tr);
+    u8g2_->DrawStr(1, 7, name);
+    u8g2_->DrawHLine(0, 9, 32);
 }
 
 void OledDisplay::RenderAppList()
@@ -44,7 +44,7 @@ void OledDisplay::RenderAppList()
     if (scrollStart < 0) scrollStart = 0;
     if (scrollStart + maxVisible > visCount) scrollStart = visCount > maxVisible ? visCount - maxVisible : 0;
 
-    u8g2_->setFont(u8g2_font_5x7_tr);
+    u8g2_->SetFont(u8g2_font_5x7_tr);
 
     for (uint8_t i = 0; i < maxVisible && (scrollStart + i) < visCount; i++) {
         IApp* app = mgr_->GetVisibleApp(scrollStart + i);
@@ -55,19 +55,19 @@ void OledDisplay::RenderAppList()
 
         if (isActive) {
             // Highlighted: inverted colors
-            u8g2_->setDrawColor(1);
-            u8g2_->drawBox(0, y, 32, itemH);
-            u8g2_->setDrawColor(0);
+            u8g2_->SetDrawColor(1);
+            u8g2_->DrawBox(0, y, 32, itemH);
+            u8g2_->SetDrawColor(0);
         } else {
-            u8g2_->setDrawColor(1);
+            u8g2_->SetDrawColor(1);
         }
 
         // Draw icon (placeholder: first 2 chars of name)
         const char* name = app->GetName();
         char abbr[3] = {name[0], name[1], '\0'};
-        u8g2_->drawStr(2, y + itemH - 4, abbr);
+        u8g2_->DrawStr(2, y + itemH - 4, abbr);
 
-        u8g2_->setDrawColor(1);
+        u8g2_->SetDrawColor(1);
     }
 }
 
@@ -79,9 +79,9 @@ void OledDisplay::RenderSubmenuList()
     uint8_t count = app->GetSubItemCount();
     if (count == 0) return;
 
-    u8g2_->setFont(u8g2_font_5x7_tr);
-    u8g2_->drawStr(1, 7, "Sub");
-    u8g2_->drawHLine(0, 9, 32);
+    u8g2_->SetFont(u8g2_font_5x7_tr);
+    u8g2_->DrawStr(1, 7, "Sub");
+    u8g2_->DrawHLine(0, 9, 32);
 
     uint8_t activeIdx = app->GetActiveSubItem();
     uint8_t startY = 12;
@@ -95,16 +95,16 @@ void OledDisplay::RenderSubmenuList()
         bool isActive = (i == activeIdx);
 
         if (isActive) {
-            u8g2_->setDrawColor(1);
-            u8g2_->drawBox(0, y, 32, itemH);
-            u8g2_->setDrawColor(0);
+            u8g2_->SetDrawColor(1);
+            u8g2_->DrawBox(0, y, 32, itemH);
+            u8g2_->SetDrawColor(0);
         } else {
-            u8g2_->setDrawColor(1);
+            u8g2_->SetDrawColor(1);
         }
 
         char abbr[4] = {name[0], name[1], name[2], '\0'};
-        u8g2_->drawStr(2, y + itemH - 3, abbr);
-        u8g2_->setDrawColor(1);
+        u8g2_->DrawStr(2, y + itemH - 3, abbr);
+        u8g2_->SetDrawColor(1);
     }
 }
 
@@ -115,5 +115,5 @@ void OledDisplay::RenderKnobIndicator(float knobPos, bool active)
     uint8_t barY = 120;
     uint8_t barLen = (uint8_t)(knobPos * 32.0f);
     if (barLen > 32) barLen = 32;
-    u8g2_->drawBox(0, barY, barLen, 4);
+    u8g2_->DrawBox(0, barY, barLen, 4);
 }
