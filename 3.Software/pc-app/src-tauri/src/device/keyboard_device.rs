@@ -48,7 +48,6 @@ impl KeyboardDevice {
             return Ok(None);
         }
         log::trace!("HID read {n} bytes");
-        // hidapi strips report ID on read; buf[0] = CMD
         let msg = Message::from_hid_report(&buf[..n]);
         if let Some(ref m) = msg {
             log::trace!(
@@ -67,7 +66,13 @@ impl KeyboardDevice {
         let resp = self.recv_expect(KB_PC_CONFIG_VALUE, Duration::from_millis(500))?;
         // resp.payload = [paramHi, paramLo, value...]
         if resp.payload.len() >= 2 {
-            Ok(resp.payload[2..].to_vec())
+            let value = resp.payload[2..].to_vec();
+            log::info!(
+                "Keyboard config_get param=0x{:04X} ok value_len={}",
+                param,
+                value.len()
+            );
+            Ok(value)
         } else {
             Err("Invalid config value response".into())
         }
@@ -80,6 +85,10 @@ impl KeyboardDevice {
         let resp = self.recv_expect(KB_PC_ACK, Duration::from_millis(500))?;
         // resp.payload = [original_cmd, result_code]
         if resp.payload.get(1) == Some(&RESULT_OK) {
+            log::info!(
+                "Keyboard config_set param=0x{:04X} ok (KB_PC_ACK RESULT_OK)",
+                param
+            );
             Ok(())
         } else {
             Err(format!("Config set failed: {:?}", resp.payload))
@@ -131,6 +140,13 @@ impl KeyboardDevice {
                     );
                     return Ok(msg);
                 }
+                log::trace!(
+                    "Keyboard HID RX {} (0x{:02X}) while waiting for {} (0x{:02X}), discarding",
+                    hid_cmd_label(msg.cmd),
+                    msg.cmd,
+                    hid_cmd_label(expected_cmd),
+                    expected_cmd
+                );
             }
         }
         log::warn!(

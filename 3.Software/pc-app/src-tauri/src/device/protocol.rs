@@ -178,14 +178,23 @@ impl Message {
         report
     }
 
-    /// Parse HID read buffer (hidapi strips report ID, so buf starts with CMD)
+    /// Parse HID input report from hidapi `read`.
+    /// On Windows (and some backends) the first byte is still the report ID (see `HID_REPORT_ID`).
     pub fn from_hid_report(report: &[u8]) -> Option<Self> {
         if report.is_empty() {
             return None;
         }
+        let body = if report[0] == HID_REPORT_ID && report.len() > 1 {
+            &report[1..]
+        } else {
+            report
+        };
+        if body.is_empty() {
+            return None;
+        }
         Some(Self {
-            cmd: report[0],
-            payload: report[1..].to_vec(),
+            cmd: body[0],
+            payload: body[1..].to_vec(),
         })
     }
 

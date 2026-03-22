@@ -29,7 +29,10 @@ impl HubDevice {
     }
 
     fn send_impl(&mut self, cmd: u8, payload: &[u8], flush: bool) -> Result<(), String> {
-        if cmd == PC_HUB_RGB_FORWARD || cmd == PC_HUB_DATA_FEED {
+        if cmd == PC_HUB_RGB_FORWARD
+            || cmd == PC_HUB_DATA_FEED
+            || cmd == PC_HUB_LOG_CONFIG
+        {
             log::trace!(
                 "Hub TX {} (0x{:02X}) payload_len={} flush={}",
                 cdc_cmd_label(cmd),

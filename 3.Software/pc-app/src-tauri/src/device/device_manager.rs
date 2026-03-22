@@ -21,6 +21,8 @@ pub struct DeviceManager {
     keyboard: Option<KeyboardDevice>,
     hub: Option<HubDevice>,
     discovery_running: bool,
+    /// Last (enabled, max_level) sent on CDC to avoid duplicate PC_HUB_LOG_CONFIG spam.
+    last_hub_log_config: Option<(bool, u8)>,
 }
 
 impl DeviceManager {
@@ -29,6 +31,7 @@ impl DeviceManager {
             keyboard: None,
             hub: None,
             discovery_running: false,
+            last_hub_log_config: None,
         }
     }
 
@@ -128,6 +131,7 @@ impl DeviceManager {
                         Ok(port) => {
                             log::info!("Hub connected via CDC: {}", port_info.port_name);
                             self.hub = Some(HubDevice::new(port));
+                            self.last_hub_log_config = None;
                             return;
                         }
                         Err(e) => log::warn!("Failed to open hub serial: {e}"),
@@ -229,6 +233,7 @@ impl DeviceManager {
     }
     pub fn disconnect_hub(&mut self) {
         self.hub = None;
+        self.last_hub_log_config = None;
     }
 
     /// Drain CDC backlog (device log lines + push other cmds to hub pending queue).
@@ -243,9 +248,25 @@ impl DeviceManager {
     }
 
     pub fn hub_log_config(&mut self, enabled: bool, max_level: u8) -> Result<(), String> {
+        let max_level = max_level.min(3);
+        if self.last_hub_log_config == Some((enabled, max_level)) {
+            log::trace!(
+                "hub_log_config: unchanged enabled={} max_level={}, skip CDC send",
+                enabled,
+                max_level
+            );
+            return Ok(());
+        }
         self.hub
             .as_mut()
             .ok_or_else(|| "Hub not connected".to_string())?
-            .log_config(enabled, max_level)
+            .log_config(enabled, max_level)?;
+        self.last_hub_log_config = Some((enabled, max_level));
+        log::debug!(
+            "hub_log_config: applied enabled={} max_level={}",
+            enabled,
+            max_level
+        );
+        Ok(())
     }
 }
