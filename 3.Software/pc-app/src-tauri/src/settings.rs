@@ -72,7 +72,8 @@ impl AppSettings {
             let hkcu = winreg_open();
             if let Some(key) = hkcu {
                 if self.auto_start {
-                    let _ = key.set_value("HelloWord-Manager", &exe.to_string_lossy().to_string());
+                    let exe_path = exe.to_string_lossy().into_owned();
+                    let _ = key.set_value("HelloWord-Manager", &exe_path);
                 } else {
                     let _ = key.delete_value("HelloWord-Manager");
                 }
@@ -88,6 +89,12 @@ impl AppSettings {
 
 #[cfg(target_os = "windows")]
 fn winreg_open() -> Option<winreg::RegKey> {
-    // Windows auto-start via Run registry key
-    None // winreg crate not in deps; placeholder for future
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_WRITE};
+
+    let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
+    hkcu.open_subkey_with_flags(
+        r"Software\Microsoft\Windows\CurrentVersion\Run",
+        KEY_WRITE,
+    )
+    .ok()
 }
