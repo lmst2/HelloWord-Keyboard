@@ -6,6 +6,8 @@ use std::time::Duration;
 pub struct HubDevice {
     port: Box<dyn SerialPort>,
     read_buf: Vec<u8>,
+    /// Messages not consumed by last recv_expect (e.g. HUB_PC_STATE_EVENT) — do not drop on mismatch.
+    pending: Vec<Message>,
 }
 
 impl HubDevice {
@@ -13,6 +15,7 @@ impl HubDevice {
         Self {
             port,
             read_buf: Vec::with_capacity(4096),
+            pending: Vec::new(),
         }
     }
 
@@ -131,7 +134,10 @@ impl HubDevice {
 
     pub fn profile_list(&mut self) -> Result<Message, String> {
         self.send(PC_HUB_PROFILE_LIST, &[])?;
-        self.recv_expect(HUB_PC_PROFILE_LIST, Duration::from_millis(1000))
+        self.recv_expect(
+            HUB_PC_PROFILE_LIST,
+            Duration::from_millis(3000),
+        )
     }
 
     pub fn profile_save(&mut self, slot: u8, name: &str) -> Result<(), String> {
@@ -190,12 +196,26 @@ impl HubDevice {
     }
 
     fn recv_expect(&mut self, expected_cmd: u8, timeout: Duration) -> Result<Message, String> {
+        const PENDING_CAP: usize = 64;
         let deadline = std::time::Instant::now() + timeout;
-        while std::time::Instant::now() < deadline {
+        loop {
+            if let Some(i) = self
+                .pending
+                .iter()
+                .position(|m| m.cmd == expected_cmd)
+            {
+                return Ok(self.pending.remove(i));
+            }
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             if let Some(msg) = self.recv(remaining)? {
                 if msg.cmd == expected_cmd {
                     return Ok(msg);
+                }
+                if self.pending.len() < PENDING_CAP {
+                    self.pending.push(msg);
                 }
             }
         }

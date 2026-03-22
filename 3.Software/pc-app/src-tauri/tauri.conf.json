@@ -21,11 +21,6 @@
         "decorations": true
       }
     ],
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true,
-      "tooltip": "HelloWord-75 Manager"
-    },
     "security": {
       "csp": null
     }

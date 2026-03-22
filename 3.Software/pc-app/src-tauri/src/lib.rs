@@ -10,6 +10,7 @@ mod settings;
 mod state;
 mod tray;
 
+use settings::AppSettings;
 use state::AppState;
 use std::io::Write;
 use std::sync::Arc;
@@ -149,7 +150,7 @@ pub fn run() {
                 );
             });
 
-            // On window close: minimize to tray instead of quitting
+            // Close button: hide to tray (was prevent_close only — window stayed visible, looked broken on Windows).
             let window = match app.get_webview_window("main") {
                 Some(w) => w,
                 None => {
@@ -157,11 +158,18 @@ pub fn run() {
                     std::process::exit(1);
                 }
             };
+            let handle = app.handle().clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    // Window hides; background services keep running
-                    // Tray "Open Dashboard" re-shows the window
+                    if AppSettings::load_or_default().minimize_to_tray {
+                        api.prevent_close();
+                        if let Some(w) = handle.get_webview_window("main") {
+                            let _ = w.hide();
+                        }
+                    } else {
+                        api.prevent_close();
+                        handle.exit(0);
+                    }
                 }
             });
 

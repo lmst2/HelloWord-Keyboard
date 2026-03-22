@@ -7,6 +7,7 @@ use tauri::{
     tray::TrayIconBuilder,
     App, Manager,
 };
+// Single tray from Rust only — tauri.conf trayIcon duplicates an icon on Windows (blank + broken color tile).
 use tokio::sync::{Mutex, RwLock};
 
 pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +17,7 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &data_toggle, &quit])?;
 
-    let _tray = TrayIconBuilder::new()
+    let mut builder = TrayIconBuilder::new()
         .menu(&menu)
         .tooltip("HelloWord-75 Manager")
         .on_menu_event(move |app, event| match event.id.as_ref() {
@@ -30,8 +31,11 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                 app.exit(0);
             }
             _ => {}
-        })
-        .build(app)?;
+        });
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    let _tray = builder.build(app)?;
 
     Ok(())
 }

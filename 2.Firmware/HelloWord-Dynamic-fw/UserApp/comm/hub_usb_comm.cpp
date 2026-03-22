@@ -5,13 +5,43 @@
 #include "config/profile_store.h"
 #include "app/app_manager.h"
 #include "common_inc.h"
+#include "usbd_cdc.h"
 #include "usbd_cdc_if.h"
 
 HubUsbComm hubUsb;
 
+// CDC_Transmit_FS rejects Len > 64; large replies (e.g. profile list) must be split.
+// Tx buffer is reused until the IN transfer completes — brief delay between chunks.
 bool HubUsbComm::SendCdc(const uint8_t* data, uint16_t len)
 {
-    return CDC_Transmit_FS((uint8_t*)data, len, CDC_IN_EP) == USBD_OK;
+    uint16_t offset = 0;
+    while (offset < len) {
+        uint16_t chunk = len - offset;
+        if (chunk > CDC_DATA_MAX_PACKET_SIZE) {
+            chunk = CDC_DATA_MAX_PACKET_SIZE;
+        }
+
+        uint32_t busyWaits = 0;
+        uint8_t st = USBD_FAIL;
+        for (;;) {
+            st = CDC_Transmit_FS((uint8_t*)(data + offset), chunk, CDC_IN_EP);
+            if (st != USBD_BUSY) {
+                break;
+            }
+            HAL_Delay(1);
+            if (++busyWaits > 500) {
+                return false;
+            }
+        }
+        if (st != USBD_OK) {
+            return false;
+        }
+        offset += chunk;
+        if (offset < len) {
+            HAL_Delay(3);
+        }
+    }
+    return true;
 }
 
 bool HubUsbComm::SendResponse(const uint8_t* resp, uint16_t respLen)
