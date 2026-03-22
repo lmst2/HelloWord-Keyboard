@@ -1,5 +1,4 @@
-use crate::device::bootloader_device::{open_bootloader, wait_for_bootloader, BootloaderDevice};
-use crate::device::protocol::*;
+use crate::device::bootloader_device::{open_bootloader, wait_for_bootloader};
 use crate::device::DeviceManager;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};

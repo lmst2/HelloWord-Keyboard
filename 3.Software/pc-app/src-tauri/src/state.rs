@@ -7,12 +7,13 @@ use crate::profile::ProfileService;
 use crate::rgb::RgbEngine;
 use crate::settings::AppSettings;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 pub type SharedState = Arc<RwLock<AppState>>;
 
 pub struct AppState {
-    pub device_mgr: Arc<RwLock<DeviceManager>>,
+    /// Mutex: HID/serial port objects are `Send` but not `Sync` (Tauri `State` requires `Sync`).
+    pub device_mgr: Arc<Mutex<DeviceManager>>,
     pub config_svc: Arc<RwLock<ConfigService>>,
     pub data_engine: Arc<RwLock<DataProviderEngine>>,
     pub rgb_engine: Arc<RwLock<RgbEngine>>,
@@ -24,7 +25,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new() -> Self {
-        let device_mgr = Arc::new(RwLock::new(DeviceManager::new()));
+        let device_mgr = Arc::new(Mutex::new(DeviceManager::new()));
         let config_svc = Arc::new(RwLock::new(ConfigService::new()));
         let data_engine = Arc::new(RwLock::new(DataProviderEngine::new()));
         let rgb_engine = Arc::new(RwLock::new(RgbEngine::new()));

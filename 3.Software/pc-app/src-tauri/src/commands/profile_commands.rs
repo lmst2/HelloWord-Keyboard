@@ -11,8 +11,8 @@ pub struct ProfileEntry {
 
 #[tauri::command]
 pub async fn profile_list(state: State<'_, SharedState>) -> Result<Vec<ProfileEntry>, String> {
-    let s = state.read().await;
-    let mut dm = s.device_mgr.write().await;
+    let s = state.inner().read().await;
+    let mut dm = s.device_mgr.lock().await;
     let msg = dm.hub_profile_list()?;
 
     let mut profiles = Vec::new();
@@ -48,22 +48,22 @@ pub async fn profile_save(
     slot: u8,
     name: String,
 ) -> Result<(), String> {
-    let s = state.read().await;
-    let mut dm = s.device_mgr.write().await;
+    let s = state.inner().read().await;
+    let mut dm = s.device_mgr.lock().await;
     dm.hub_profile_save(slot, &name)
 }
 
 #[tauri::command]
 pub async fn profile_load(state: State<'_, SharedState>, slot: u8) -> Result<(), String> {
-    let s = state.read().await;
-    let mut dm = s.device_mgr.write().await;
+    let s = state.inner().read().await;
+    let mut dm = s.device_mgr.lock().await;
     dm.hub_profile_load(slot)
 }
 
 #[tauri::command]
 pub async fn profile_delete(state: State<'_, SharedState>, slot: u8) -> Result<(), String> {
-    let s = state.read().await;
-    let mut dm = s.device_mgr.write().await;
+    let s = state.inner().read().await;
+    let mut dm = s.device_mgr.lock().await;
     dm.hub_profile_delete(slot)
 }
 
@@ -73,7 +73,7 @@ pub async fn profile_export(
     name: String,
     path: String,
 ) -> Result<(), String> {
-    let s = state.read().await;
+    let s = state.inner().read().await;
     let config = s.config_svc.read().await;
     s.profile_svc
         .export_to_file(&name, &config, std::path::Path::new(&path))
@@ -84,9 +84,9 @@ pub async fn profile_import(
     state: State<'_, SharedState>,
     path: String,
 ) -> Result<String, String> {
-    let s = state.read().await;
+    let s = state.inner().read().await;
     let mut config = s.config_svc.write().await;
-    let mut dm = s.device_mgr.write().await;
+    let mut dm = s.device_mgr.lock().await;
     s.profile_svc
         .import_from_file(std::path::Path::new(&path), &mut config, &mut dm)
 }

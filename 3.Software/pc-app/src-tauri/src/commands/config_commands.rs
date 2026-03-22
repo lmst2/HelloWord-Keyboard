@@ -37,9 +37,9 @@ pub async fn config_get(
     args: ConfigGetArgs,
 ) -> Result<ConfigValueResult, String> {
     let target = parse_target(&args.target)?;
-    let s = state.read().await;
+    let s = state.inner().read().await;
     let mut config = s.config_svc.write().await;
-    let mut dm = s.device_mgr.write().await;
+    let mut dm = s.device_mgr.lock().await;
     let value = config.get(target, args.param, &mut dm)?;
     Ok(ConfigValueResult {
         param: args.param,
@@ -53,9 +53,9 @@ pub async fn config_set(
     args: ConfigSetArgs,
 ) -> Result<(), String> {
     let target = parse_target(&args.target)?;
-    let s = state.read().await;
+    let s = state.inner().read().await;
     let mut config = s.config_svc.write().await;
-    let mut dm = s.device_mgr.write().await;
+    let mut dm = s.device_mgr.lock().await;
 
     let param_meta = config
         .registry()
@@ -80,15 +80,15 @@ pub async fn config_set(
 
 #[tauri::command]
 pub async fn config_sync_all(state: State<'_, SharedState>) -> Result<(), String> {
-    let s = state.read().await;
+    let s = state.inner().read().await;
     let mut config = s.config_svc.write().await;
-    let mut dm = s.device_mgr.write().await;
+    let mut dm = s.device_mgr.lock().await;
     config.sync_all(&mut dm)
 }
 
 #[tauri::command]
 pub async fn get_param_registry(state: State<'_, SharedState>) -> Result<Vec<ParamMeta>, String> {
-    let s = state.read().await;
+    let s = state.inner().read().await;
     let config = s.config_svc.read().await;
     Ok(config.registry().get_all().to_vec())
 }

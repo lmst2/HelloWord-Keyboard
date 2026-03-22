@@ -1,10 +1,10 @@
-use crate::data::data_engine::{FeedData, ProviderInfo};
+use crate::data::{FeedData, ProviderInfo};
 use crate::state::SharedState;
 use tauri::State;
 
 #[tauri::command]
 pub async fn data_start(state: State<'_, SharedState>) -> Result<(), String> {
-    let s = state.read().await;
+    let s = state.inner().read().await;
     let mut engine = s.data_engine.write().await;
     engine.start();
     Ok(())
@@ -12,7 +12,7 @@ pub async fn data_start(state: State<'_, SharedState>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn data_stop(state: State<'_, SharedState>) -> Result<(), String> {
-    let s = state.read().await;
+    let s = state.inner().read().await;
     let mut engine = s.data_engine.write().await;
     engine.stop();
     Ok(())
@@ -22,7 +22,7 @@ pub async fn data_stop(state: State<'_, SharedState>) -> Result<(), String> {
 pub async fn data_get_providers(
     state: State<'_, SharedState>,
 ) -> Result<Vec<ProviderInfo>, String> {
-    let s = state.read().await;
+    let s = state.inner().read().await;
     let engine = s.data_engine.read().await;
     Ok(engine.get_providers())
 }
@@ -33,7 +33,7 @@ pub async fn data_set_provider_enabled(
     id: String,
     enabled: bool,
 ) -> Result<(), String> {
-    let s = state.read().await;
+    let s = state.inner().read().await;
     let mut engine = s.data_engine.write().await;
     engine.set_provider_enabled(&id, enabled);
     Ok(())
@@ -41,7 +41,7 @@ pub async fn data_set_provider_enabled(
 
 #[tauri::command]
 pub async fn data_get_live(state: State<'_, SharedState>) -> Result<Vec<FeedData>, String> {
-    let s = state.read().await;
+    let s = state.inner().read().await;
     let mut engine = s.data_engine.write().await;
     Ok(engine.poll())
 }

@@ -1,14 +1,13 @@
-use crate::data::data_engine::DataProviderEngine;
+use crate::data::DataProviderEngine;
 use crate::device::DeviceManager;
 use crate::rgb::RgbEngine;
-use crate::state::SharedState;
 use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
     App, Manager,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let open = MenuItem::with_id(app, "open", "Open Dashboard", true, None::<&str>)?;
@@ -40,7 +39,7 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
 /// Background service: pushes data feeds and RGB frames to devices.
 /// Runs as a Tokio task, keeps going even when the window is hidden.
 pub fn spawn_background_services(
-    device_mgr: Arc<RwLock<DeviceManager>>,
+    device_mgr: Arc<Mutex<DeviceManager>>,
     data_engine: Arc<RwLock<DataProviderEngine>>,
     rgb_engine: Arc<RwLock<RgbEngine>>,
 ) {
@@ -57,7 +56,7 @@ pub fn spawn_background_services(
             if feeds.is_empty() {
                 continue;
             }
-            let mut dm = dm_data.write().await;
+            let mut dm = dm_data.lock().await;
             if !dm.is_hub_connected() {
                 continue;
             }
@@ -79,7 +78,7 @@ pub fn spawn_background_services(
                 engine.render()
             };
             if let Some(pages) = pages {
-                let dm = dm_rgb.read().await;
+                let dm = dm_rgb.lock().await;
                 if !dm.is_keyboard_connected() {
                     continue;
                 }
