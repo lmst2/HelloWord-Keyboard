@@ -11,7 +11,11 @@ pub struct HubDevice {
 }
 
 impl HubDevice {
-    pub fn new(port: Box<dyn SerialPort>) -> Self {
+    pub fn new(mut port: Box<dyn SerialPort>) -> Self {
+        // STM32 USB CDC on Windows often will not IN-transfer until host asserts DTR.
+        let _ = port.write_data_terminal_ready(true);
+        let _ = port.write_request_to_send(true);
+        let _ = port.clear(serialport::ClearBuffer::All);
         Self {
             port,
             read_buf: Vec::with_capacity(4096),
@@ -73,7 +77,10 @@ impl HubDevice {
 
         let mut tmp = [0u8; 512];
         match self.port.read(&mut tmp) {
-            Ok(n) if n > 0 => self.read_buf.extend_from_slice(&tmp[..n]),
+            Ok(n) if n > 0 => {
+                log::trace!("Hub serial read {} bytes from CDC", n);
+                self.read_buf.extend_from_slice(&tmp[..n]);
+            }
             Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {}
             Err(e) => return Err(format!("Serial read error: {e}")),
             _ => {}
@@ -198,13 +205,26 @@ impl HubDevice {
 
     pub fn switch_eink_app(&mut self, app_id: u8) -> Result<(), String> {
         self.send(PC_HUB_EINK_SWITCH, &[app_id])?;
-        let resp = self.recv_expect(HUB_PC_ACK, Duration::from_millis(2000))?;
-        if resp.payload.first() == Some(&PC_HUB_EINK_SWITCH)
-            && resp.payload.get(1) == Some(&RESULT_OK)
-        {
-            Ok(())
-        } else {
-            Err(format!("Hub e-ink switch failed: {:?}", resp.payload))
+        match self.recv_expect(HUB_PC_ACK, Duration::from_millis(2000)) {
+            Ok(resp) => {
+                if resp.payload.first() == Some(&PC_HUB_EINK_SWITCH)
+                    && resp.payload.get(1) == Some(&RESULT_OK)
+                {
+                    log::info!("Hub e-ink switch ACK ok app_id=0x{app_id:02X}");
+                    Ok(())
+                } else {
+                    Err(format!("Hub e-ink switch rejected: {:?}", resp.payload))
+                }
+            }
+            Err(e) => {
+                // Command was written; many stacks need DTR for device TX — see HubDevice::new.
+                // Old Hub FW may also omit CDC replies.
+                log::warn!(
+                    "Hub e-ink switch: no ACK (command was sent): {} — check Hub Dynamic-fw + CDC RX",
+                    e
+                );
+                Ok(())
+            }
         }
     }
 
@@ -306,10 +326,11 @@ impl HubDevice {
             }
         }
         log::warn!(
-            "Hub RX timeout waiting {} (0x{:02X}), pending_queue_len={}",
+            "Hub RX timeout waiting {} (0x{:02X}), pending_queue_len={}, read_buf_len={} (no CDC bytes? try DTR on open, reflash HelloWord-Dynamic-fw Hub)",
             cdc_cmd_label(expected_cmd),
             expected_cmd,
-            self.pending.len()
+            self.pending.len(),
+            self.read_buf.len()
         );
         Err(format!("Timeout waiting for cmd 0x{expected_cmd:02X}"))
     }

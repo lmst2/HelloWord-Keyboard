@@ -66,9 +66,5 @@ pub async fn eink_switch_app(state: State<'_, SharedState>, app_id: u8) -> Resul
     let s = state.inner().read().await;
     let mut dm = s.device_mgr.lock().await;
     dm.hub_switch_eink_app(app_id)?;
-    log::info!(
-        "eink_switch_app: hub ack ok app_id=0x{:02X}",
-        app_id
-    );
     Ok(())
 }
