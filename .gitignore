@@ -19,3 +19,6 @@ Thumbs.db
 *.lib
 *.so
 *.dylib
+
+# Libs
+zmk-config_helloword_hw-75/
