@@ -320,23 +320,26 @@ void HWKeyboard::ClearMouseReport()
 }
 
 
+void HWKeyboard::SetBrightnessLevel(uint8_t level)
+{
+    if (level >= BRIGHTNESS_LEVELS)
+        level = BRIGHTNESS_LEVELS - 1;
+    brightnessLevel = level;
+    brightnessPreDiv = BRIGHTNESS_MAP[brightnessLevel];
+}
+
+
 void HWKeyboard::IncreaseBrightness()
 {
     if (brightnessLevel < BRIGHTNESS_LEVELS - 1)
-    {
-        brightnessLevel++;
-        brightnessPreDiv = BRIGHTNESS_MAP[brightnessLevel];
-    }
+        SetBrightnessLevel((uint8_t)(brightnessLevel + 1U));
 }
 
 
 void HWKeyboard::DecreaseBrightness()
 {
     if (brightnessLevel > 0)
-    {
-        brightnessLevel--;
-        brightnessPreDiv = BRIGHTNESS_MAP[brightnessLevel];
-    }
+        SetBrightnessLevel((uint8_t)(brightnessLevel - 1U));
 }
 
 

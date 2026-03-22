@@ -122,7 +122,7 @@ fn build_param_table() -> Vec<ParamMeta> {
         pm(0x0100, "Effect Mode", "Lighting", Keyboard, Enum, 0, 7, 1,
            Some(vec!["Rainbow Sweep", "Reactive", "Aurora", "Ripple", "Static", "Breathing", "Wave", "Off"]),
            vec![0]),
-        pm(0x0101, "Brightness", "Lighting", Keyboard, U8, 0, 8, 1, None, vec![4]),
+        pm(0x0101, "Brightness", "Lighting", Keyboard, U8, 0, 6, 1, None, vec![4]),
         pm(0x0106, "Effect Speed", "Lighting", Keyboard, U8, 0, 255, 1, None, vec![128]),
         pm(0x0110, "Rainbow Hue Offset", "Lighting / Effect Colors", Keyboard, U8, 0, 255, 1, None, vec![0]),
         pm(0x0120, "Reactive Hue", "Lighting / Effect Colors", Keyboard, U8, 0, 255, 1, None, vec![128]),

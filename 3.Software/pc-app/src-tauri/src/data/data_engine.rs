@@ -193,8 +193,21 @@ impl DataProviderEngine {
         self.last_poll.values().cloned().collect()
     }
 
+    /// Text feeds carry UTF-8 for e-ink / scroll apps; numeric feeds use one byte 0–100.
     pub fn encode_feed_for_device(feed: &FeedData) -> Vec<u8> {
-        feed.value_f32.to_le_bytes().to_vec()
+        match feed.feed_id {
+            FEED_TIME | FEED_WEATHER_TEMP => {
+                let mut v: Vec<u8> = feed.display.as_bytes().to_vec();
+                if v.len() > 255 {
+                    v.truncate(255);
+                }
+                v
+            }
+            _ => {
+                let pct = feed.value_f32.clamp(0.0, 100.0).round() as u8;
+                vec![pct]
+            }
+        }
     }
 }
 

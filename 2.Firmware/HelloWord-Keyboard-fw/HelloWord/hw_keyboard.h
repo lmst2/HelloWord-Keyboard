@@ -103,6 +103,8 @@ public:
 
     void IncreaseBrightness();
     void DecreaseBrightness();
+    /** Clamp to 0..BRIGHTNESS_LEVELS-1 and sync brightnessPreDiv (RGB scaling). */
+    void SetBrightnessLevel(uint8_t level);
     void SetEffect(LightEffect_t _effect);
     void NextEffect();
     void UpdateKeyPressState();

@@ -91,7 +91,7 @@ export default function Dashboard() {
           <input
             type="range"
             min={0}
-            max={8}
+            max={6}
             value={brightness}
             onChange={(e) => {
               const v = Number(e.target.value);

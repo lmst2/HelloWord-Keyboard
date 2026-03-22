@@ -68,7 +68,7 @@ bool ConfigHandler::SetParam(uint16_t paramId, const uint8_t* value, uint8_t len
             break;
         case PARAM_BRIGHTNESS:
             cfg_->brightness = value[0];
-            keyboard.brightnessLevel = value[0];
+            keyboard.SetBrightnessLevel(value[0]);
             break;
         case PARAM_EFFECT_SPEED:
             cfg_->effectSpeed = value[0];
@@ -154,7 +154,7 @@ void ConfigHandler::ApplyToRuntime()
 {
     if (!cfg_) return;
     keyboard.SetEffect((HWKeyboard::LightEffect_t)cfg_->effectMode);
-    keyboard.brightnessLevel = cfg_->brightness;
+    keyboard.SetBrightnessLevel(cfg_->brightness);
 }
 
 void ConfigHandler::Save()

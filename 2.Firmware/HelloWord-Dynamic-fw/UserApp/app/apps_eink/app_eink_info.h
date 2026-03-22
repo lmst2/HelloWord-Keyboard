@@ -25,7 +25,9 @@ private:
 
     static constexpr uint8_t FEED_ID_WEATHER = 0x20;
     static constexpr uint8_t FEED_ID_DATE    = 0x21;
-    static constexpr uint8_t FEED_ID_CALENDAR= 0x22;
+    static constexpr uint8_t FEED_ID_CALENDAR = 0x22;
+    /// Matches PC `FEED_TIME` (clock string for Info date line).
+    static constexpr uint8_t FEED_ID_TIME = 0x30;
 };
 
 #endif // APP_EINK_INFO_H

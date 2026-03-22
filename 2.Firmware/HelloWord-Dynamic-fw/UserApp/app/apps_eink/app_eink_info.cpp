@@ -10,6 +10,7 @@ void AppEinkInfoPanel::OnPcData(uint8_t feedId, const uint8_t* data, uint8_t len
             needsRefresh_ = true;
             break;
         case FEED_ID_DATE:
+        case FEED_ID_TIME:
             if (len > 0) { memcpy(dateLine_, data, len < 31 ? len : 31); dateLine_[len < 31 ? len : 31] = '\0'; }
             needsRefresh_ = true;
             break;
