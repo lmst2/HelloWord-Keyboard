@@ -57,10 +57,9 @@ impl DeviceManager {
 
     fn discover_keyboard(&mut self) {
         if self.keyboard.is_some() {
-            log::debug!("discover_keyboard: already connected, skip");
             return;
         }
-        log::debug!(
+        log::trace!(
             "discover_keyboard: scanning HID VID={:04X} PID={:04X} usage_page={:04X}",
             KB_VID,
             KB_PID,
@@ -80,7 +79,7 @@ impl DeviceManager {
                 && dev_info.usage_page() == KB_RAW_HID_USAGE_PAGE
             {
                 candidates += 1;
-                log::debug!("discover_keyboard: candidate path={:?}", dev_info.path());
+                log::trace!("discover_keyboard: opening candidate path={:?}", dev_info.path());
                 match dev_info.open_device(&api) {
                     Ok(device) => {
                         log::info!("Keyboard connected via raw HID: {:?}", dev_info.path());
@@ -92,16 +91,15 @@ impl DeviceManager {
             }
         }
         if candidates == 0 {
-            log::debug!("discover_keyboard: no matching HID devices");
+            log::trace!("discover_keyboard: no matching HID devices");
         }
     }
 
     fn discover_hub(&mut self) {
         if self.hub.is_some() {
-            log::debug!("discover_hub: already connected, skip");
             return;
         }
-        log::debug!(
+        log::trace!(
             "discover_hub: listing serial ports for USB VID={:04X} PID={:04X}",
             HUB_VID,
             HUB_PID
@@ -113,7 +111,7 @@ impl DeviceManager {
                 return;
             }
         };
-        log::debug!("discover_hub: {} ports reported", ports.len());
+        log::trace!("discover_hub: {} ports reported", ports.len());
         for port_info in ports {
             if let serialport::SerialPortType::UsbPort(usb) = &port_info.port_type {
                 log::trace!(
@@ -137,7 +135,7 @@ impl DeviceManager {
                 }
             }
         }
-        log::debug!("discover_hub: no hub CDC port opened");
+        log::trace!("discover_hub: no hub CDC port opened");
     }
 
     pub fn is_keyboard_connected(&self) -> bool {

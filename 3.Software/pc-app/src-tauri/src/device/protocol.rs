@@ -107,6 +107,56 @@ pub const BL_RSP_CRC_FAIL: u8 = 0x04;
 pub const BL_WRITE_CHUNK: usize = 60;
 pub const BL_REPORT_SIZE: usize = 65; // 1 (report id 0) + 64 (data)
 
+/// CDC frame command byte → short name for logs (PC↔Hub).
+pub fn cdc_cmd_label(cmd: u8) -> &'static str {
+    match cmd {
+        PC_HUB_CONFIG_GET => "PC_HUB_CONFIG_GET",
+        PC_HUB_CONFIG_SET => "PC_HUB_CONFIG_SET",
+        PC_HUB_CONFIG_GET_ALL => "PC_HUB_CONFIG_GET_ALL",
+        PC_HUB_STATUS_REQ => "PC_HUB_STATUS_REQ",
+        PC_HUB_DATA_FEED => "PC_HUB_DATA_FEED",
+        PC_HUB_EINK_IMAGE => "PC_HUB_EINK_IMAGE",
+        PC_HUB_EINK_TEXT => "PC_HUB_EINK_TEXT",
+        PC_HUB_FW_INFO_REQ => "PC_HUB_FW_INFO_REQ",
+        PC_HUB_DFU_KB => "PC_HUB_DFU_KB",
+        PC_HUB_DFU_HUB => "PC_HUB_DFU_HUB",
+        PC_HUB_PROFILE_LIST => "PC_HUB_PROFILE_LIST",
+        PC_HUB_PROFILE_SAVE => "PC_HUB_PROFILE_SAVE",
+        PC_HUB_PROFILE_LOAD => "PC_HUB_PROFILE_LOAD",
+        PC_HUB_PROFILE_DELETE => "PC_HUB_PROFILE_DELETE",
+        PC_HUB_APP_SWITCH => "PC_HUB_APP_SWITCH",
+        PC_HUB_EINK_SWITCH => "PC_HUB_EINK_SWITCH",
+        PC_HUB_RGB_FORWARD => "PC_HUB_RGB_FORWARD",
+        PC_HUB_LOG_CONFIG => "PC_HUB_LOG_CONFIG",
+        HUB_PC_CONFIG_VALUE => "HUB_PC_CONFIG_VALUE",
+        HUB_PC_STATUS => "HUB_PC_STATUS",
+        HUB_PC_ACK => "HUB_PC_ACK",
+        HUB_PC_FW_INFO => "HUB_PC_FW_INFO",
+        HUB_PC_PROFILE_LIST => "HUB_PC_PROFILE_LIST",
+        HUB_PC_STATE_EVENT => "HUB_PC_STATE_EVENT",
+        HUB_PC_LOG => "HUB_PC_LOG",
+        _ => "CDC_UNKNOWN",
+    }
+}
+
+/// Raw HID vendor command (Report ID 2) → short name for logs.
+pub fn hid_cmd_label(cmd: u8) -> &'static str {
+    match cmd {
+        PC_KB_RGB_MODE => "PC_KB_RGB_MODE",
+        PC_KB_CONFIG_GET => "PC_KB_CONFIG_GET",
+        PC_KB_CONFIG_SET => "PC_KB_CONFIG_SET",
+        PC_KB_STATUS_REQ => "PC_KB_STATUS_REQ",
+        PC_KB_CONFIG_GET_ALL => "PC_KB_CONFIG_GET_ALL",
+        PC_KB_DFU => "PC_KB_DFU",
+        KB_PC_STATUS => "KB_PC_STATUS",
+        KB_PC_CONFIG_VALUE => "KB_PC_CONFIG_VALUE",
+        KB_PC_ACK => "KB_PC_ACK",
+        LEGACY_RGB_DIRECT => "LEGACY_RGB_DIRECT",
+        LEGACY_RGB_STOP => "LEGACY_RGB_STOP",
+        _ => "HID_UNKNOWN",
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub cmd: u8,

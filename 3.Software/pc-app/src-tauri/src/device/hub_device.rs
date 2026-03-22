@@ -29,6 +29,23 @@ impl HubDevice {
     }
 
     fn send_impl(&mut self, cmd: u8, payload: &[u8], flush: bool) -> Result<(), String> {
+        if cmd == PC_HUB_RGB_FORWARD || cmd == PC_HUB_DATA_FEED {
+            log::trace!(
+                "Hub TX {} (0x{:02X}) payload_len={} flush={}",
+                cdc_cmd_label(cmd),
+                cmd,
+                payload.len(),
+                flush
+            );
+        } else {
+            log::info!(
+                "Hub TX {} (0x{:02X}) payload_len={} flush={}",
+                cdc_cmd_label(cmd),
+                cmd,
+                payload.len(),
+                flush
+            );
+        }
         let msg = Message::new(cmd, payload.to_vec());
         let frame = msg.to_cdc_frame(); // uses little-endian length
         // Windows usbser CDC often rejects single large WriteFile (os error 22 / EINVAL).
@@ -243,7 +260,14 @@ impl HubDevice {
                 .iter()
                 .position(|m| m.cmd == expected_cmd)
             {
-                return Ok(self.pending.remove(i));
+                let msg = self.pending.remove(i);
+                log::debug!(
+                    "Hub RX {} (0x{:02X}) payload_len={} (from pending)",
+                    cdc_cmd_label(msg.cmd),
+                    msg.cmd,
+                    msg.payload.len()
+                );
+                return Ok(msg);
             }
             if std::time::Instant::now() >= deadline {
                 break;
@@ -251,13 +275,31 @@ impl HubDevice {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             if let Some(msg) = self.recv(remaining)? {
                 if msg.cmd == expected_cmd {
+                    log::debug!(
+                        "Hub RX {} (0x{:02X}) payload_len={} (matched wait)",
+                        cdc_cmd_label(msg.cmd),
+                        msg.cmd,
+                        msg.payload.len()
+                    );
                     return Ok(msg);
                 }
+                log::trace!(
+                    "Hub RX {} (0x{:02X}) while waiting for {} — queued pending",
+                    cdc_cmd_label(msg.cmd),
+                    msg.cmd,
+                    cdc_cmd_label(expected_cmd)
+                );
                 if self.pending.len() < PENDING_CAP {
                     self.pending.push(msg);
                 }
             }
         }
+        log::warn!(
+            "Hub RX timeout waiting {} (0x{:02X}), pending_queue_len={}",
+            cdc_cmd_label(expected_cmd),
+            expected_cmd,
+            self.pending.len()
+        );
         Err(format!("Timeout waiting for cmd 0x{expected_cmd:02X}"))
     }
 }

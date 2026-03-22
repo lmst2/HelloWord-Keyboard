@@ -4,6 +4,7 @@ use tauri::State;
 
 #[tauri::command]
 pub async fn data_start(state: State<'_, SharedState>) -> Result<(), String> {
+    log::info!("data_start: PC data feed engine running (tray will push to Hub)");
     let s = state.inner().read().await;
     let mut engine = s.data_engine.write().await;
     engine.start();
@@ -12,6 +13,7 @@ pub async fn data_start(state: State<'_, SharedState>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn data_stop(state: State<'_, SharedState>) -> Result<(), String> {
+    log::info!("data_stop: PC data feed engine stopped");
     let s = state.inner().read().await;
     let mut engine = s.data_engine.write().await;
     engine.stop();
@@ -33,6 +35,7 @@ pub async fn data_set_provider_enabled(
     id: String,
     enabled: bool,
 ) -> Result<(), String> {
+    log::info!("data_set_provider_enabled: id={:?} enabled={}", id, enabled);
     let s = state.inner().read().await;
     let mut engine = s.data_engine.write().await;
     engine.set_provider_enabled(&id, enabled);

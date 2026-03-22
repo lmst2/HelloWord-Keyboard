@@ -31,6 +31,20 @@ fn parse_target(t: &str) -> Result<Target, String> {
     }
 }
 
+fn hex_bytes_preview(bytes: &[u8], max: usize) -> String {
+    let n = bytes.len().min(max);
+    let head: String = bytes[..n]
+        .iter()
+        .map(|b| format!("{:02X}", b))
+        .collect::<Vec<_>>()
+        .join(" ");
+    if bytes.len() > max {
+        format!("{head} … (+{} bytes)", bytes.len() - max)
+    } else {
+        head
+    }
+}
+
 #[tauri::command]
 pub async fn config_get(
     state: State<'_, SharedState>,
@@ -39,8 +53,25 @@ pub async fn config_get(
     let target = parse_target(&args.target)?;
     let s = state.inner().read().await;
     let mut config = s.config_svc.write().await;
+    let pname = config
+        .registry()
+        .get(args.param)
+        .map(|m| m.name.as_str())
+        .unwrap_or("?");
+    log::info!(
+        "config_get: target={:?} param_id=0x{:04X} name=\"{}\"",
+        target,
+        args.param,
+        pname
+    );
     let mut dm = s.device_mgr.lock().await;
     let value = config.get(target, args.param, &mut dm)?;
+    log::info!(
+        "config_get: ok param_id=0x{:04X} value_bytes={} hex=[{}]",
+        args.param,
+        value.len(),
+        hex_bytes_preview(&value, 24)
+    );
     Ok(ConfigValueResult {
         param: args.param,
         value,
@@ -75,11 +106,26 @@ pub async fn config_set(
         }
     };
 
-    config.set(target, args.param, &value, &mut dm)
+    let vbytes = value.to_bytes();
+    log::info!(
+        "config_set: target={:?} param_id=0x{:04X} name=\"{}\" value_hex=[{}]",
+        target,
+        args.param,
+        param_meta.name,
+        hex_bytes_preview(&vbytes, 24)
+    );
+    config.set(target, args.param, &value, &mut dm)?;
+    log::info!(
+        "config_set: ok param_id=0x{:04X} name=\"{}\"",
+        args.param,
+        param_meta.name
+    );
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn config_sync_all(state: State<'_, SharedState>) -> Result<(), String> {
+    log::info!("config_sync_all: pulling full keyboard param set from device");
     let s = state.inner().read().await;
     let mut config = s.config_svc.write().await;
     let mut dm = s.device_mgr.lock().await;

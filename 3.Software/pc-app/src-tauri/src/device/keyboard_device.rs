@@ -13,11 +13,21 @@ impl KeyboardDevice {
     }
 
     pub fn send(&self, cmd: u8, payload: &[u8]) -> Result<(), String> {
-        log::debug!(
-            "HID send cmd=0x{:02X} payload_len={}",
-            cmd,
-            payload.len()
-        );
+        if cmd == LEGACY_RGB_DIRECT {
+            log::trace!(
+                "Keyboard HID TX {} (0x{:02X}) payload_len={}",
+                hid_cmd_label(cmd),
+                cmd,
+                payload.len()
+            );
+        } else {
+            log::info!(
+                "Keyboard HID TX {} (0x{:02X}) payload_len={}",
+                hid_cmd_label(cmd),
+                cmd,
+                payload.len()
+            );
+        }
         let msg = Message::new(cmd, payload.to_vec());
         let report = msg.to_hid_report();
         let n = self
@@ -41,7 +51,12 @@ impl KeyboardDevice {
         // hidapi strips report ID on read; buf[0] = CMD
         let msg = Message::from_hid_report(&buf[..n]);
         if let Some(ref m) = msg {
-            log::debug!("HID recv cmd=0x{:02X} payload_len={}", m.cmd, m.payload.len());
+            log::trace!(
+                "Keyboard HID RX {} (0x{:02X}) payload_len={}",
+                hid_cmd_label(m.cmd),
+                m.cmd,
+                m.payload.len()
+            );
         }
         Ok(msg)
     }
@@ -108,10 +123,21 @@ impl KeyboardDevice {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             if let Some(msg) = self.recv(remaining)? {
                 if msg.cmd == expected_cmd {
+                    log::debug!(
+                        "Keyboard HID RX {} (0x{:02X}) matched wait, payload_len={}",
+                        hid_cmd_label(msg.cmd),
+                        msg.cmd,
+                        msg.payload.len()
+                    );
                     return Ok(msg);
                 }
             }
         }
+        log::warn!(
+            "Keyboard HID timeout waiting {} (0x{:02X})",
+            hid_cmd_label(expected_cmd),
+            expected_cmd
+        );
         Err(format!("Timeout waiting for cmd 0x{expected_cmd:02X}"))
     }
 }

@@ -19,8 +19,10 @@ pub async fn rgb_set_mode(
 
     let rgb_mode: RgbMode =
         serde_json::from_value(mode).map_err(|e| format!("Invalid RGB mode: {e}"))?;
+    log::info!("rgb_set_mode: {:?}", rgb_mode);
     engine.set_mode(rgb_mode);
     engine.start();
+    log::info!("rgb_set_mode: engine started (tray pushes frames to keyboard)");
     Ok(())
 }
 
@@ -41,6 +43,7 @@ pub async fn rgb_get_mode(state: State<'_, SharedState>) -> Result<RgbModeInfo, 
 
 #[tauri::command]
 pub async fn rgb_stop(state: State<'_, SharedState>) -> Result<(), String> {
+    log::info!("rgb_stop: stopping RGB engine");
     let s = state.inner().read().await;
     let mut engine = s.rgb_engine.write().await;
     engine.stop();

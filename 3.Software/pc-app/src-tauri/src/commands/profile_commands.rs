@@ -11,6 +11,7 @@ pub struct ProfileEntry {
 
 #[tauri::command]
 pub async fn profile_list(state: State<'_, SharedState>) -> Result<Vec<ProfileEntry>, String> {
+    log::info!("profile_list: requesting list from Hub");
     let s = state.inner().read().await;
     let mut dm = s.device_mgr.lock().await;
     let msg = dm.hub_profile_list()?;
@@ -39,6 +40,7 @@ pub async fn profile_list(state: State<'_, SharedState>) -> Result<Vec<ProfileEn
             used: true,
         });
     }
+    log::info!("profile_list: {} entries", profiles.len());
     Ok(profiles)
 }
 
@@ -48,23 +50,32 @@ pub async fn profile_save(
     slot: u8,
     name: String,
 ) -> Result<(), String> {
+    log::info!("profile_save: slot={} name={:?}", slot, name);
     let s = state.inner().read().await;
     let mut dm = s.device_mgr.lock().await;
-    dm.hub_profile_save(slot, &name)
+    dm.hub_profile_save(slot, &name)?;
+    log::info!("profile_save: ok slot={}", slot);
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn profile_load(state: State<'_, SharedState>, slot: u8) -> Result<(), String> {
+    log::info!("profile_load: slot={}", slot);
     let s = state.inner().read().await;
     let mut dm = s.device_mgr.lock().await;
-    dm.hub_profile_load(slot)
+    dm.hub_profile_load(slot)?;
+    log::info!("profile_load: ok slot={}", slot);
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn profile_delete(state: State<'_, SharedState>, slot: u8) -> Result<(), String> {
+    log::info!("profile_delete: slot={}", slot);
     let s = state.inner().read().await;
     let mut dm = s.device_mgr.lock().await;
-    dm.hub_profile_delete(slot)
+    dm.hub_profile_delete(slot)?;
+    log::info!("profile_delete: ok slot={}", slot);
+    Ok(())
 }
 
 #[tauri::command]

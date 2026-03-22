@@ -53,11 +53,13 @@ impl ConfigService {
     ) -> Result<Vec<u8>, String> {
         match target {
             Target::Keyboard => {
+                log::debug!("config_service: reading keyboard param 0x{:04X} via HID", param);
                 let val = device_mgr.kb_config_get(param)?;
                 self.kb_cache.insert(param, val.clone());
                 Ok(val)
             }
             Target::Hub => {
+                log::debug!("config_service: reading hub param 0x{:04X} via CDC", param);
                 let val = device_mgr.hub_config_get(target, param)?;
                 self.hub_cache.insert(param, val.clone());
                 Ok(val)
@@ -76,8 +78,16 @@ impl ConfigService {
         match target {
             Target::Keyboard => {
                 if device_mgr.is_keyboard_connected() {
+                    log::debug!(
+                        "config_service: applying keyboard param 0x{:04X} via direct HID",
+                        param
+                    );
                     device_mgr.kb_config_set(param, &bytes)?;
                 } else if device_mgr.is_hub_connected() {
+                    log::debug!(
+                        "config_service: applying keyboard param 0x{:04X} via Hub UART relay",
+                        param
+                    );
                     device_mgr.hub_config_set(target, param, &bytes)?;
                 } else {
                     return Err("No device connected".into());

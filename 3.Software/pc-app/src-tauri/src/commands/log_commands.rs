@@ -30,8 +30,16 @@ pub async fn log_sync_device(state: State<'_, SharedState>) -> Result<(), String
     let settings = s.settings.read().await.clone();
     let mut dm = s.device_mgr.lock().await;
     if dm.is_hub_connected() {
-        dm.hub_log_config(settings.device_log_enabled, settings.device_log_max_level)
+        log::info!(
+            "log_sync_device: enabled={} max_level={}",
+            settings.device_log_enabled,
+            settings.device_log_max_level
+        );
+        dm.hub_log_config(settings.device_log_enabled, settings.device_log_max_level)?;
+        log::info!("log_sync_device: PC_HUB_LOG_CONFIG sent");
+        Ok(())
     } else {
+        log::warn!("log_sync_device: Hub not connected, skip");
         Ok(())
     }
 }

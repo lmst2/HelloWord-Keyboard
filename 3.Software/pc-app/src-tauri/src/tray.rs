@@ -66,7 +66,14 @@ pub fn spawn_background_services(
             }
             for feed in &feeds {
                 let encoded = DataProviderEngine::encode_feed_for_device(feed);
-                let _ = dm.hub_data_feed(feed.feed_id, &encoded);
+                if let Err(e) = dm.hub_data_feed(feed.feed_id, &encoded) {
+                    log::warn!(
+                        "Background data_feed: id=0x{:02X} len={} err={}",
+                        feed.feed_id,
+                        encoded.len(),
+                        e
+                    );
+                }
             }
         }
     });
@@ -87,7 +94,14 @@ pub fn spawn_background_services(
                     continue;
                 }
                 for (page_idx, colors) in &pages {
-                    let _ = dm.kb_rgb_direct(*page_idx, colors);
+                    if let Err(e) = dm.kb_rgb_direct(*page_idx, colors) {
+                        log::trace!(
+                            "Background rgb_direct: page={} colors_len={} err={}",
+                            page_idx,
+                            colors.len(),
+                            e
+                        );
+                    }
                 }
             }
         }
