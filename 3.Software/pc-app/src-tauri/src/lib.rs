@@ -11,13 +11,91 @@ mod state;
 mod tray;
 
 use state::AppState;
+use std::io::Write;
 use std::sync::Arc;
+use std::sync::Mutex;
 use tauri::Manager;
 use tokio::sync::RwLock;
 
+/// GUI Windows apps use subsystem WINDOWS — stderr is not attached to PowerShell, so logs vanish.
+/// We mirror log output to a file under LocalAppData and capture panics there too.
+fn init_diagnostics() {
+    let log_path = dirs::data_local_dir().map(|d| d.join("helloword-manager").join("app.log"));
+
+    if let Some(ref path) = log_path {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let path_for_hook = path.clone();
+        std::panic::set_hook(Box::new(move |info| {
+            let line = format!("{info}\n");
+            let _ = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path_for_hook)
+                .and_then(|mut f| f.write_all(line.as_bytes()));
+            let _ = std::io::stderr().write_all(line.as_bytes());
+        }));
+    }
+
+    #[cfg(windows)]
+    {
+        use env_logger::{Builder, Target};
+
+        let mut builder = Builder::from_default_env();
+        if let Some(ref path) = log_path {
+            if let Ok(file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
+                struct LogTee(Mutex<std::fs::File>);
+                impl Write for LogTee {
+                    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                        let n = buf.len();
+                        let _ = std::io::stderr().write_all(buf);
+                        self.0.lock().unwrap().write_all(buf)?;
+                        Ok(n)
+                    }
+                    fn flush(&mut self) -> std::io::Result<()> {
+                        let _ = std::io::stderr().flush();
+                        self.0.lock().unwrap().flush()
+                    }
+                }
+                builder.target(Target::Pipe(Box::new(LogTee(Mutex::new(file)))));
+            }
+        }
+        let _ = builder.try_init();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = env_logger::Builder::from_default_env().try_init();
+    }
+
+    if let Some(ref p) = log_path {
+        let rust_log = std::env::var("RUST_LOG").unwrap_or_else(|_| "<unset>".into());
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(p)
+            .and_then(|mut f| {
+                writeln!(f)?;
+                writeln!(
+                    f,
+                    "===== helloword-manager start pid={} =====",
+                    std::process::id()
+                )?;
+                writeln!(f, "RUST_LOG={}", rust_log)?;
+                writeln!(f, "Log path: {}", p.display())?;
+                Ok(())
+            });
+        log::info!("Log file: {}", p.display());
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::init();
+    init_diagnostics();
 
     let app_state = Arc::new(RwLock::new(AppState::new()));
 
@@ -72,7 +150,13 @@ pub fn run() {
             });
 
             // On window close: minimize to tray instead of quitting
-            let window = app.get_webview_window("main").unwrap();
+            let window = match app.get_webview_window("main") {
+                Some(w) => w,
+                None => {
+                    log::error!("Missing webview window 'main'; check tauri.conf.json (windows[].label)");
+                    std::process::exit(1);
+                }
+            };
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
