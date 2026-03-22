@@ -19,10 +19,10 @@ private:
     void HandleStatusReq(const uint8_t* payload, uint8_t len);
     void HandleDataFeed(const uint8_t* payload, uint8_t len);
     void HandleEinkImage(const uint8_t* payload, uint16_t len);
-    void HandleEinkText(const uint8_t* payload, uint8_t len);
+    void HandleEinkText(const uint8_t* payload, uint16_t len);
     void HandleFwInfoReq();
     void HandleProfileList();
-    void HandleProfileSave(const uint8_t* payload, uint8_t len);
+    void HandleProfileSave(const uint8_t* payload, uint16_t len);
     void HandleProfileLoad(const uint8_t* payload, uint8_t len);
     void HandleProfileDelete(const uint8_t* payload, uint8_t len);
     void HandleAppSwitch(const uint8_t* payload, uint8_t len);

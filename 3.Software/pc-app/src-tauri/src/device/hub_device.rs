@@ -17,14 +17,29 @@ impl HubDevice {
     }
 
     pub fn send(&mut self, cmd: u8, payload: &[u8]) -> Result<(), String> {
+        self.send_impl(cmd, payload, true)
+    }
+
+    /// Hub reboots immediately on PC_HUB_DFU_HUB; FlushFileBuffers can block forever on Windows after USB disconnect.
+    pub fn send_without_flush(&mut self, cmd: u8, payload: &[u8]) -> Result<(), String> {
+        self.send_impl(cmd, payload, false)
+    }
+
+    fn send_impl(&mut self, cmd: u8, payload: &[u8], flush: bool) -> Result<(), String> {
         let msg = Message::new(cmd, payload.to_vec());
         let frame = msg.to_cdc_frame(); // uses little-endian length
-        self.port
-            .write_all(&frame)
-            .map_err(|e| format!("Serial write error: {e}"))?;
-        self.port
-            .flush()
-            .map_err(|e| format!("Serial flush error: {e}"))?;
+        // Windows usbser CDC often rejects single large WriteFile (os error 22 / EINVAL).
+        const CHUNK: usize = 64;
+        for chunk in frame.chunks(CHUNK) {
+            self.port
+                .write_all(chunk)
+                .map_err(|e| format!("Serial write error: {e}"))?;
+        }
+        if flush {
+            self.port
+                .flush()
+                .map_err(|e| format!("Serial flush error: {e}"))?;
+        }
         Ok(())
     }
 
@@ -164,7 +179,7 @@ impl HubDevice {
     }
 
     pub fn enter_dfu_hub(&mut self) -> Result<(), String> {
-        self.send(PC_HUB_DFU_HUB, &[])
+        self.send_without_flush(PC_HUB_DFU_HUB, &[])
     }
 
     /// Forward RGB commands to keyboard through Hub's UART relay

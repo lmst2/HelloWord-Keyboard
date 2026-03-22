@@ -19,6 +19,7 @@ Thumbs.db
 *.lib
 *.so
 *.dylib
+2.Firmware/_Release/hw75_dynamic@B-zmk.bin
 
 # Libs
 zmk-config_helloword_hw-75/

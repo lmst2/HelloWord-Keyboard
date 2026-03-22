@@ -57,8 +57,29 @@ export default function DfuManager() {
     const fw = target === "keyboard" ? kbFirmware : hubFirmware;
     if (!fw) return;
 
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = undefined;
+    }
+
     setFlashTarget(target);
     setProgress({ progress: 0, message: "Starting...", done: false, error: null });
+
+    // Poll while invoke runs — Rust updates progress during flash; previously we only polled after await, so the bar stayed at 0% then jumped to 100%.
+    const pollOnce = async () => {
+      try {
+        const p = await invoke<FlashProgress>("dfu_get_progress");
+        setProgress(p);
+        if (p.done && pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = undefined;
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void pollOnce();
+    pollRef.current = setInterval(pollOnce, 200);
 
     try {
       const cmd = target === "keyboard" ? "dfu_flash_keyboard" : "dfu_flash_hub";
@@ -67,20 +88,18 @@ export default function DfuManager() {
       setProgress((p) =>
         p ? { ...p, error: String(err), done: true } : null
       );
-    }
-
-    // Poll progress
-    pollRef.current = setInterval(async () => {
+    } finally {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = undefined;
+      }
       try {
         const p = await invoke<FlashProgress>("dfu_get_progress");
         setProgress(p);
-        if (p.done) {
-          clearInterval(pollRef.current);
-        }
       } catch {
         // ignore
       }
-    }, 200);
+    }
   };
 
   useEffect(() => {

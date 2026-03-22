@@ -38,7 +38,7 @@ void HubUsbComm::HandleCommand(const uint8_t* data, uint16_t len)
 
     uint8_t cmd = data[0];
     const uint8_t* payload = data + 1;
-    uint8_t payloadLen = (uint8_t)(len - 1);
+    const uint16_t payloadLen = (len >= 1) ? (uint16_t)(len - 1) : 0;
 
     switch (cmd) {
         case Msg::PC_HUB_CONFIG_GET:     HandleConfigGet(payload, payloadLen); break;
@@ -66,8 +66,11 @@ void HubUsbComm::HandleCommand(const uint8_t* data, uint16_t len)
             break;
         }
         case Msg::PC_HUB_RGB_FORWARD:
-            if (payloadLen >= 2)
-                hubUart.Send(payload[0], payload + 1, payloadLen - 1);
+            if (payloadLen >= 2) {
+                uint16_t rgbLen = payloadLen - 1;
+                uint8_t uartLen = rgbLen > 255 ? (uint8_t)255 : (uint8_t)rgbLen;
+                hubUart.Send(payload[0], payload + 1, uartLen);
+            }
             break;
         default: break;
     }
@@ -159,10 +162,11 @@ void HubUsbComm::HandleEinkImage(const uint8_t* payload, uint16_t len)
     appManager.OnPcData(0x10, payload, (uint8_t)(len > 255 ? 255 : len));
 }
 
-void HubUsbComm::HandleEinkText(const uint8_t* payload, uint8_t len)
+void HubUsbComm::HandleEinkText(const uint8_t* payload, uint16_t len)
 {
     if (len < 1) return;
-    appManager.OnPcData(0x30, payload, len);
+    uint8_t n = len > 255 ? (uint8_t)255 : (uint8_t)len;
+    appManager.OnPcData(0x30, payload, n);
 }
 
 void HubUsbComm::HandleFwInfoReq()
@@ -184,7 +188,7 @@ void HubUsbComm::HandleProfileList()
     SendResponse(buf, 1 + listLen);
 }
 
-void HubUsbComm::HandleProfileSave(const uint8_t* payload, uint8_t len)
+void HubUsbComm::HandleProfileSave(const uint8_t* payload, uint16_t len)
 {
     if (len < 2) return;
     uint8_t slot = payload[0];

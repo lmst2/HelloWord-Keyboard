@@ -16,10 +16,19 @@ pub async fn dfu_flash_keyboard(
     state: State<'_, SharedState>,
     firmware_bytes: Vec<u8>,
 ) -> Result<(), String> {
-    let s = state.inner().read().await;
-    let mut dm = s.device_mgr.lock().await;
-    s.dfu_svc.reset_progress();
-    s.dfu_svc.flash_keyboard(&mut dm, &firmware_bytes)
+    let app = state.inner().clone();
+    {
+        let s = app.read().await;
+        s.dfu_svc.reset_progress();
+    }
+    let fw = firmware_bytes;
+    tokio::task::spawn_blocking(move || {
+        let s = app.blocking_read();
+        let mut dm = s.device_mgr.blocking_lock();
+        s.dfu_svc.flash_keyboard(&mut *dm, &fw)
+    })
+    .await
+    .map_err(|e| format!("Flash task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -27,10 +36,19 @@ pub async fn dfu_flash_hub(
     state: State<'_, SharedState>,
     firmware_bytes: Vec<u8>,
 ) -> Result<(), String> {
-    let s = state.inner().read().await;
-    let mut dm = s.device_mgr.lock().await;
-    s.dfu_svc.reset_progress();
-    s.dfu_svc.flash_hub(&mut dm, &firmware_bytes)
+    let app = state.inner().clone();
+    {
+        let s = app.read().await;
+        s.dfu_svc.reset_progress();
+    }
+    let fw = firmware_bytes;
+    tokio::task::spawn_blocking(move || {
+        let s = app.blocking_read();
+        let mut dm = s.device_mgr.blocking_lock();
+        s.dfu_svc.flash_hub(&mut *dm, &fw)
+    })
+    .await
+    .map_err(|e| format!("Flash task failed: {e}"))?
 }
 
 #[tauri::command]

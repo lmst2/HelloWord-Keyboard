@@ -590,7 +590,8 @@ class SSD1306 : public U8G2
 private:
 
 public:
-    explicit SSD1306(I2C_HandleTypeDef* _hi2c, const u8g2_cb_t* rotation = U8G2_R2) : U8G2()
+    // Panel is 128x32 in RAM; mounted portrait -> use R1/R3 so logical size is 32x128 (matches oled_display.cpp).
+    explicit SSD1306(I2C_HandleTypeDef* _hi2c, const u8g2_cb_t* rotation = U8G2_R1) : U8G2()
     {
         U8G2_I2C_HANDLE = _hi2c;
         u8g2_Setup_sh1106_i2c_128x32_noname_f(&u8g2, rotation, u8x8_byte_stm32_hw_i2c,
