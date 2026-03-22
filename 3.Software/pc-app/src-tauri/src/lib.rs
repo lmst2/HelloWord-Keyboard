@@ -137,10 +137,10 @@ pub fn run() {
         .setup(move |app| {
             tray::setup_tray(app)?;
 
-            // Spawn background push services (Data ~1Hz, RGB ~30fps)
+            // Spawn background push services (Data ~1Hz, RGB ~30fps).
+            // setup() is not inside Tokio; use Tauri's runtime, not Handle::current().
             let state_for_bg = app_state.clone();
-            let rt = tokio::runtime::Handle::current();
-            rt.spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 let s = state_for_bg.read().await;
                 tray::spawn_background_services(
                     s.device_mgr.clone(),
