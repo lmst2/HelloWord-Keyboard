@@ -16,7 +16,6 @@ use settings::AppSettings;
 use state::AppState;
 use std::io::Write;
 use std::sync::Arc;
-use std::sync::Mutex;
 use tauri::Emitter;
 use tauri::Manager;
 use tokio::sync::RwLock;
@@ -164,11 +163,12 @@ pub fn run() {
                         continue;
                     }
                     for line in batch {
-                        {
+                        let log_store = {
                             let s = hub_log_pump_state.read().await;
-                            if let Ok(mut store) = s.device_log_store.lock() {
-                                store.push(line.clone());
-                            }
+                            s.device_log_store.clone()
+                        };
+                        if let Ok(mut store) = log_store.lock() {
+                            store.push(line.clone());
                         }
                         let _ = hub_log_pump_handle.emit("device-log", &line);
                     }
