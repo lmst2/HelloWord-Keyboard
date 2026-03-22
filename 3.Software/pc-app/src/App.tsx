@@ -9,6 +9,7 @@ import ProfileManager from "./pages/ProfileManager";
 import DataProviders from "./pages/DataProviders";
 import DfuManager from "./pages/DfuManager";
 import AppSettingsPage from "./pages/AppSettingsPage";
+import Logs from "./pages/Logs";
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
               <Route path="/data" element={<DataProviders />} />
               <Route path="/dfu" element={<DfuManager />} />
               <Route path="/settings" element={<AppSettingsPage />} />
+              <Route path="/logs" element={<Logs />} />
             </Routes>
           </main>
         </div>

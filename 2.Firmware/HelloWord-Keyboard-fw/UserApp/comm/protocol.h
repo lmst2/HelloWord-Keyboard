@@ -33,6 +33,7 @@ static constexpr uint8_t HUB_KB_CONFIG_SET    = 0x26;
 static constexpr uint8_t HUB_KB_CONFIG_GET_ALL= 0x28;
 static constexpr uint8_t HUB_KB_KEY_ACTION    = 0x29;
 static constexpr uint8_t HUB_KB_DFU           = 0x2F;
+static constexpr uint8_t HUB_KB_LOG_CONFIG    = 0x2E;
 // KB -> Hub
 static constexpr uint8_t KB_HUB_FN_STATE      = 0xA1;
 static constexpr uint8_t KB_HUB_STATUS        = 0xA3;
@@ -41,6 +42,7 @@ static constexpr uint8_t KB_HUB_TOUCHBAR      = 0xA5;
 static constexpr uint8_t KB_HUB_CONFIG_VALUE  = 0xA6;
 static constexpr uint8_t KB_HUB_CONFIG_ACK    = 0xA7;
 static constexpr uint8_t KB_HUB_PING          = 0xAF;
+static constexpr uint8_t KB_HUB_LOG         = 0xA8;
 
 // ==== PC <-> Hub (USB CDC) ====
 // PC -> Hub
@@ -61,6 +63,7 @@ static constexpr uint8_t PC_HUB_PROFILE_DELETE= 0xCE;
 static constexpr uint8_t PC_HUB_APP_SWITCH    = 0xD1;
 static constexpr uint8_t PC_HUB_EINK_SWITCH   = 0xD2;
 static constexpr uint8_t PC_HUB_RGB_FORWARD   = 0xD3;
+static constexpr uint8_t PC_HUB_LOG_CONFIG    = 0xD4;
 // Hub -> PC
 static constexpr uint8_t HUB_PC_CONFIG_VALUE  = 0xE1;
 static constexpr uint8_t HUB_PC_STATUS        = 0xE2;
@@ -68,6 +71,7 @@ static constexpr uint8_t HUB_PC_ACK           = 0xE3;
 static constexpr uint8_t HUB_PC_FW_INFO       = 0xE4;
 static constexpr uint8_t HUB_PC_PROFILE_LIST  = 0xE5;
 static constexpr uint8_t HUB_PC_STATE_EVENT   = 0xE6;
+static constexpr uint8_t HUB_PC_LOG         = 0xE7;
 
 // Result codes for ACK messages
 static constexpr uint8_t RESULT_OK            = 0x00;

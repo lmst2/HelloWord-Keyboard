@@ -195,6 +195,45 @@ impl HubDevice {
         self.send(PC_HUB_RGB_FORWARD, &payload)
     }
 
+    /// Push unsolicited CDC messages (e.g. log lines) for later recv_expect consumption.
+    pub fn push_pending(&mut self, msg: Message) {
+        const PENDING_CAP: usize = 64;
+        if self.pending.len() < PENDING_CAP {
+            self.pending.push(msg);
+        }
+    }
+
+    /// Non-blocking drain: routes `HUB_PC_LOG` to `out_logs`, everything else to `pending`.
+    pub fn drain_unsolicited(
+        &mut self,
+        out_logs: &mut Vec<crate::device_log::DeviceLogLine>,
+    ) -> Result<(), String> {
+        loop {
+            match self.recv(Duration::from_millis(1)) {
+                Ok(Some(m)) => {
+                    if m.cmd == HUB_PC_LOG {
+                        if let Some(line) = crate::device_log::parse_hub_log_payload(&m.payload) {
+                            out_logs.push(line);
+                        }
+                    } else {
+                        self.push_pending(m);
+                    }
+                }
+                Ok(None) => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
+    pub fn log_config(&mut self, enabled: bool, max_level: u8) -> Result<(), String> {
+        let ml = max_level.min(3);
+        self.send(
+            PC_HUB_LOG_CONFIG,
+            &[if enabled { 1u8 } else { 0u8 }, ml],
+        )
+    }
+
     fn recv_expect(&mut self, expected_cmd: u8, timeout: Duration) -> Result<Message, String> {
         const PENDING_CAP: usize = 64;
         let deadline = std::time::Instant::now() + timeout;

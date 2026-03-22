@@ -8,6 +8,7 @@ const navItems = [
   { to: "/profiles", label: "Profiles", icon: "users" },
   { to: "/data", label: "Data Feed", icon: "activity" },
   { to: "/dfu", label: "Firmware", icon: "download" },
+  { to: "/logs", label: "Logs", icon: "log" },
   { to: "/settings", label: "Settings", icon: "settings" },
 ];
 
@@ -19,6 +20,7 @@ const iconMap: Record<string, string> = {
   users: "👤",
   activity: "📊",
   download: "⬇",
+  log: "📋",
   settings: "🔧",
 };
 

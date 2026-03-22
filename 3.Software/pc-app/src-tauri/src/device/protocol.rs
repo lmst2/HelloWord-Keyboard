@@ -49,6 +49,7 @@ pub const PC_HUB_PROFILE_DELETE: u8 = 0xCE;
 pub const PC_HUB_APP_SWITCH: u8 = 0xD1;
 pub const PC_HUB_EINK_SWITCH: u8 = 0xD2;
 pub const PC_HUB_RGB_FORWARD: u8 = 0xD3;
+pub const PC_HUB_LOG_CONFIG: u8 = 0xD4;
 
 pub const HUB_PC_CONFIG_VALUE: u8 = 0xE1;
 pub const HUB_PC_STATUS: u8 = 0xE2;
@@ -56,6 +57,11 @@ pub const HUB_PC_ACK: u8 = 0xE3;
 pub const HUB_PC_FW_INFO: u8 = 0xE4;
 pub const HUB_PC_PROFILE_LIST: u8 = 0xE5;
 pub const HUB_PC_STATE_EVENT: u8 = 0xE6;
+pub const HUB_PC_LOG: u8 = 0xE7;
+
+/// Device log line: payload[0]=source (0=hub 1=keyboard), [1]=level 0..3, [2..]=utf8
+pub const LOG_SOURCE_HUB: u8 = 0;
+pub const LOG_SOURCE_KEYBOARD: u8 = 1;
 
 pub const RESULT_OK: u8 = 0x00;
 pub const RESULT_ERR_PARAM: u8 = 0x01;

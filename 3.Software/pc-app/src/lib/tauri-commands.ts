@@ -140,8 +140,23 @@ export interface AppSettings {
   openrgb_port: number;
   weather_city: string;
   weather_api_key: string;
+  device_log_enabled: boolean;
+  device_log_max_level: number;
+  pc_app_log_level: string;
+}
+
+export interface DeviceLogLine {
+  ts_ms: number;
+  source: string;
+  level: string;
+  message: string;
 }
 
 export const settingsGet = () => invoke<AppSettings>("settings_get");
 export const settingsSet = (settings: AppSettings) =>
   invoke<void>("settings_set", { newSettings: settings });
+
+export const logGetSnapshot = () =>
+  invoke<DeviceLogLine[]>("log_get_snapshot");
+export const logClear = () => invoke<void>("log_clear");
+export const logSyncDevice = () => invoke<void>("log_sync_device");

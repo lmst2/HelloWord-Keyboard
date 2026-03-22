@@ -16,6 +16,23 @@ pub struct AppSettings {
     pub openrgb_port: u16,
     pub weather_city: String,
     pub weather_api_key: String,
+    /// When true, hub/keyboard stream log lines to PC (USB `HUB_PC_LOG`).
+    #[serde(default)]
+    pub device_log_enabled: bool,
+    /// Firmware filter: 0=error only … 3=debug (emit if line level <= this).
+    #[serde(default = "default_device_log_max_level")]
+    pub device_log_max_level: u8,
+    /// Host `log` crate max level: error|warn|info|debug|trace
+    #[serde(default = "default_pc_app_log_level")]
+    pub pc_app_log_level: String,
+}
+
+fn default_device_log_max_level() -> u8 {
+    3
+}
+
+fn default_pc_app_log_level() -> String {
+    "info".to_string()
 }
 
 impl Default for AppSettings {
@@ -35,6 +52,9 @@ impl Default for AppSettings {
             openrgb_port: 6742,
             weather_city: "".to_string(),
             weather_api_key: "".to_string(),
+            device_log_enabled: false,
+            device_log_max_level: default_device_log_max_level(),
+            pc_app_log_level: default_pc_app_log_level(),
         }
     }
 }

@@ -2,8 +2,10 @@ mod commands;
 mod config;
 mod data;
 mod device;
+mod device_log;
 mod dfu;
 mod eink;
+mod logging;
 mod profile;
 mod rgb;
 mod settings;
@@ -15,6 +17,7 @@ use state::AppState;
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tauri::Emitter;
 use tauri::Manager;
 use tokio::sync::RwLock;
 
@@ -98,6 +101,9 @@ fn init_diagnostics() {
 pub fn run() {
     init_diagnostics();
 
+    let boot_settings = AppSettings::load_or_default();
+    logging::apply_pc_rust_log_level(&boot_settings.pc_app_log_level);
+
     let app_state = Arc::new(RwLock::new(AppState::new()));
 
     tauri::Builder::default()
@@ -134,9 +140,40 @@ pub fn run() {
             commands::dfu_commands::dfu_get_progress,
             commands::settings_commands::settings_get,
             commands::settings_commands::settings_set,
+            commands::log_commands::log_get_snapshot,
+            commands::log_commands::log_clear,
+            commands::log_commands::log_sync_device,
         ])
         .setup(move |app| {
             tray::setup_tray(app)?;
+
+            let hub_log_pump_handle = app.handle().clone();
+            let hub_log_pump_state = app_state.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                    let mut batch = Vec::new();
+                    {
+                        let s = hub_log_pump_state.read().await;
+                        let mut dm = s.device_mgr.lock().await;
+                        if let Err(e) = dm.hub_drain_logs(&mut batch) {
+                            log::trace!("hub_drain_logs: {e}");
+                        }
+                    }
+                    if batch.is_empty() {
+                        continue;
+                    }
+                    for line in batch {
+                        {
+                            let s = hub_log_pump_state.read().await;
+                            if let Ok(mut store) = s.device_log_store.lock() {
+                                store.push(line.clone());
+                            }
+                        }
+                        let _ = hub_log_pump_handle.emit("device-log", &line);
+                    }
+                }
+            });
 
             // Spawn background push services (Data ~1Hz, RGB ~30fps).
             // setup() is not inside Tokio; use Tauri's runtime, not Handle::current().

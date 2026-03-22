@@ -13,11 +13,18 @@ impl KeyboardDevice {
     }
 
     pub fn send(&self, cmd: u8, payload: &[u8]) -> Result<(), String> {
+        log::debug!(
+            "HID send cmd=0x{:02X} payload_len={}",
+            cmd,
+            payload.len()
+        );
         let msg = Message::new(cmd, payload.to_vec());
         let report = msg.to_hid_report();
-        self.device
+        let n = self
+            .device
             .write(&report)
             .map_err(|e| format!("HID write error: {e}"))?;
+        log::trace!("HID write returned {n} bytes");
         Ok(())
     }
 
@@ -30,8 +37,13 @@ impl KeyboardDevice {
         if n == 0 {
             return Ok(None);
         }
+        log::trace!("HID read {n} bytes");
         // hidapi strips report ID on read; buf[0] = CMD
-        Ok(Message::from_hid_report(&buf[..n]))
+        let msg = Message::from_hid_report(&buf[..n]);
+        if let Some(ref m) = msg {
+            log::debug!("HID recv cmd=0x{:02X} payload_len={}", m.cmd, m.payload.len());
+        }
+        Ok(msg)
     }
 
     pub fn config_get(&self, param: u16) -> Result<Vec<u8>, String> {

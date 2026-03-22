@@ -1,6 +1,8 @@
 #include "usb_comm.h"
 #include "protocol.h"
+#include "kb_device_log.h"
 #include "config_handler.h"
+#include <cstdio>
 #include "common_inc.h"
 #include "configurations.h"
 #include "HelloWord/hw_keyboard.h"
@@ -47,13 +49,21 @@ void UsbComm::HandleRawCommand(uint8_t* data)
 {
     uint8_t cmd = data[1];
 
+    if (KbDeviceLogShouldEmit(2)) {
+        char line[48];
+        snprintf(line, sizeof(line), "HID cmd=0x%02X", cmd);
+        KbDeviceLogLine(2, line);
+    }
+
     switch (cmd) {
         case Msg::PC_KB_DFU:
+            KbDeviceLogLine(1, "HID DFU request");
             RebootToDfu();
             break;
 
         case Msg::LEGACY_RGB_STOP:
             isSoftWareControlColor = false;
+            KbDeviceLogLine(2, "HID RGB stop");
             break;
 
         case Msg::LEGACY_RGB_DIRECT: {
@@ -76,22 +86,27 @@ void UsbComm::HandleRawCommand(uint8_t* data)
         }
 
         case Msg::PC_KB_CONFIG_GET:
+            KbDeviceLogLine(2, "HID config get");
             HandleConfigGet(data);
             break;
 
         case Msg::PC_KB_CONFIG_SET:
+            KbDeviceLogLine(2, "HID config set");
             HandleConfigSet(data);
             break;
 
         case Msg::PC_KB_CONFIG_GET_ALL:
+            KbDeviceLogLine(2, "HID config get all");
             HandleConfigGetAll();
             break;
 
         case Msg::PC_KB_STATUS_REQ:
+            KbDeviceLogLine(2, "HID status req");
             HandleStatusReq();
             break;
 
         default:
+            KbDeviceLogLine(2, "HID unknown cmd");
             break;
     }
 }

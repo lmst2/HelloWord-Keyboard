@@ -1,5 +1,6 @@
 #include "hub_uart_comm.h"
 #include "protocol.h"
+#include "device_log.h"
 #include "config_cache.h"
 #include "common_inc.h"
 #include "usart.h"
@@ -116,6 +117,13 @@ void HubUartComm::HandleFrame(const uint8_t* data, uint16_t len)
         case Msg::KB_HUB_KEY_EVENT:
         case Msg::KB_HUB_TOUCHBAR:
             kbConnected_ = true;
+            break;
+
+        case Msg::KB_HUB_LOG:
+            if (payloadLen >= 2) {
+                kbConnected_ = true;
+                DeviceLogEmitFromKeyboard(payload[0], payload + 1, (uint8_t)(payloadLen - 1));
+            }
             break;
 
         default:

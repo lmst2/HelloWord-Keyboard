@@ -1,5 +1,7 @@
 #include "hub_usb_comm.h"
 #include "protocol.h"
+#include "device_log.h"
+#include <cstdio>
 #include "hub_uart_comm.h"
 #include "config/hub_config.h"
 #include "config/profile_store.h"
@@ -70,6 +72,12 @@ void HubUsbComm::HandleCommand(const uint8_t* data, uint16_t len)
     const uint8_t* payload = data + 1;
     const uint16_t payloadLen = (len >= 1) ? (uint16_t)(len - 1) : 0;
 
+    if (DeviceLogShouldEmit(3)) {
+        char line[72];
+        snprintf(line, sizeof(line), "hub CDC in cmd=0x%02X pl=%u", cmd, (unsigned)payloadLen);
+        DeviceLogEmitHub(3, line);
+    }
+
     switch (cmd) {
         case Msg::PC_HUB_CONFIG_GET:     HandleConfigGet(payload, payloadLen); break;
         case Msg::PC_HUB_CONFIG_SET:     HandleConfigSet(payload, payloadLen); break;
@@ -101,6 +109,10 @@ void HubUsbComm::HandleCommand(const uint8_t* data, uint16_t len)
                 uint8_t uartLen = rgbLen > 255 ? (uint8_t)255 : (uint8_t)rgbLen;
                 hubUart.Send(payload[0], payload + 1, uartLen);
             }
+            break;
+        case Msg::PC_HUB_LOG_CONFIG:
+            if (payloadLen >= 2)
+                DeviceLogApplyFromPc(payload[0], payload[1]);
             break;
         default: break;
     }

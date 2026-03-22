@@ -57,8 +57,15 @@ impl DeviceManager {
 
     fn discover_keyboard(&mut self) {
         if self.keyboard.is_some() {
+            log::debug!("discover_keyboard: already connected, skip");
             return;
         }
+        log::debug!(
+            "discover_keyboard: scanning HID VID={:04X} PID={:04X} usage_page={:04X}",
+            KB_VID,
+            KB_PID,
+            KB_RAW_HID_USAGE_PAGE
+        );
         let api = match hidapi::HidApi::new() {
             Ok(api) => api,
             Err(e) => {
@@ -66,11 +73,14 @@ impl DeviceManager {
                 return;
             }
         };
+        let mut candidates = 0u32;
         for dev_info in api.device_list() {
             if dev_info.vendor_id() == KB_VID
                 && dev_info.product_id() == KB_PID
                 && dev_info.usage_page() == KB_RAW_HID_USAGE_PAGE
             {
+                candidates += 1;
+                log::debug!("discover_keyboard: candidate path={:?}", dev_info.path());
                 match dev_info.open_device(&api) {
                     Ok(device) => {
                         log::info!("Keyboard connected via raw HID: {:?}", dev_info.path());
@@ -81,12 +91,21 @@ impl DeviceManager {
                 }
             }
         }
+        if candidates == 0 {
+            log::debug!("discover_keyboard: no matching HID devices");
+        }
     }
 
     fn discover_hub(&mut self) {
         if self.hub.is_some() {
+            log::debug!("discover_hub: already connected, skip");
             return;
         }
+        log::debug!(
+            "discover_hub: listing serial ports for USB VID={:04X} PID={:04X}",
+            HUB_VID,
+            HUB_PID
+        );
         let ports = match serialport::available_ports() {
             Ok(ports) => ports,
             Err(e) => {
@@ -94,8 +113,15 @@ impl DeviceManager {
                 return;
             }
         };
+        log::debug!("discover_hub: {} ports reported", ports.len());
         for port_info in ports {
             if let serialport::SerialPortType::UsbPort(usb) = &port_info.port_type {
+                log::trace!(
+                    "serial port {} usb VID={:04X} PID={:04X}",
+                    port_info.port_name,
+                    usb.vid,
+                    usb.pid
+                );
                 if usb.vid == HUB_VID && usb.pid == HUB_PID {
                     match serialport::new(&port_info.port_name, 115200)
                         .timeout(std::time::Duration::from_millis(100))
@@ -111,6 +137,7 @@ impl DeviceManager {
                 }
             }
         }
+        log::debug!("discover_hub: no hub CDC port opened");
     }
 
     pub fn is_keyboard_connected(&self) -> bool {
@@ -204,5 +231,23 @@ impl DeviceManager {
     }
     pub fn disconnect_hub(&mut self) {
         self.hub = None;
+    }
+
+    /// Drain CDC backlog (device log lines + push other cmds to hub pending queue).
+    pub fn hub_drain_logs(
+        &mut self,
+        out: &mut Vec<crate::device_log::DeviceLogLine>,
+    ) -> Result<(), String> {
+        match self.hub.as_mut() {
+            Some(h) => h.drain_unsolicited(out),
+            None => Ok(()),
+        }
+    }
+
+    pub fn hub_log_config(&mut self, enabled: bool, max_level: u8) -> Result<(), String> {
+        self.hub
+            .as_mut()
+            .ok_or_else(|| "Hub not connected".to_string())?
+            .log_config(enabled, max_level)
     }
 }

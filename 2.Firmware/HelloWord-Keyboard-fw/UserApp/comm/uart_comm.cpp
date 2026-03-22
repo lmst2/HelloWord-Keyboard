@@ -1,8 +1,10 @@
 #include "uart_comm.h"
 #include "protocol.h"
+#include "kb_device_log.h"
 #include "config_handler.h"
 #include "common_inc.h"
 #include "../features/key_injector.h"
+#include <cstdio>
 
 extern ConfigHandler configHandler;
 extern KeyInjector keyInjector;
@@ -69,7 +71,18 @@ void UartComm::HandleFrame(const uint8_t* data, uint16_t len)
     const uint8_t* payload = data + 1;
     uint8_t payloadLen = (uint8_t)(len - 1);
 
+    if (KbDeviceLogShouldEmit(3)) {
+        char line[56];
+        snprintf(line, sizeof(line), "UART RX cmd=0x%02X len=%u", cmd, (unsigned)payloadLen);
+        KbDeviceLogLine(3, line);
+    }
+
     switch (cmd) {
+        case Msg::HUB_KB_LOG_CONFIG:
+            if (payloadLen >= 2)
+                KbDeviceLogApplyFromHub(payload[0], payload[1]);
+            break;
+
         case Msg::HUB_KB_CONFIG_GET: {
             if (payloadLen < 2) break;
             uint16_t paramId = ((uint16_t)payload[0] << 8) | payload[1];
@@ -140,6 +153,7 @@ void UartComm::HandleFrame(const uint8_t* data, uint16_t len)
         }
 
         default:
+            KbDeviceLogLine(1, "UART unknown cmd");
             break;
     }
 }

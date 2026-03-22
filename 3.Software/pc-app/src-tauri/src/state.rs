@@ -5,6 +5,7 @@ use crate::dfu::DfuService;
 use crate::eink::EinkPipeline;
 use crate::profile::ProfileService;
 use crate::rgb::RgbEngine;
+use crate::device_log::DeviceLogStore;
 use crate::settings::AppSettings;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
@@ -21,6 +22,7 @@ pub struct AppState {
     pub profile_svc: Arc<ProfileService>,
     pub dfu_svc: Arc<DfuService>,
     pub settings: Arc<RwLock<AppSettings>>,
+    pub device_log_store: Arc<std::sync::Mutex<DeviceLogStore>>,
 }
 
 impl AppState {
@@ -33,6 +35,7 @@ impl AppState {
         let profile_svc = Arc::new(ProfileService::new());
         let dfu_svc = Arc::new(DfuService::new());
         let settings = Arc::new(RwLock::new(AppSettings::load_or_default()));
+        let device_log_store = Arc::new(std::sync::Mutex::new(DeviceLogStore::new(2500)));
 
         Self {
             device_mgr,
@@ -43,6 +46,7 @@ impl AppState {
             profile_svc,
             dfu_svc,
             settings,
+            device_log_store,
         }
     }
 }
