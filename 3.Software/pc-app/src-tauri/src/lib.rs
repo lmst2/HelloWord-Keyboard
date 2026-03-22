@@ -16,6 +16,8 @@ use settings::AppSettings;
 use state::AppState;
 use std::io::Write;
 use std::sync::Arc;
+#[cfg(windows)]
+use std::sync::Mutex;
 use tauri::Emitter;
 use tauri::Manager;
 use tokio::sync::RwLock;
