@@ -9,6 +9,7 @@ extern "C" {
 #include "stm32f1xx_hal.h"
 #include "main.h"
 #include "tim.h"
+#include "usart.h"
 #include "usbd_customhid.h"
 #include "usb_device.h"
 

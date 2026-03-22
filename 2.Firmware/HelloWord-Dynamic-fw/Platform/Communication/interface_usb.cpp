@@ -128,13 +128,19 @@ static void UsbServerTask(void *ctx)
         {
             usb_stats_.rx_cnt++;
 
-            // CDC Interface
+            // CDC Interface: new binary protocol or legacy ASCII
             if (CDC_interface.data_pending)
             {
                 CDC_interface.data_pending = false;
 
-                ASCII_protocol_parse_stream(CDC_interface.rx_buf, CDC_interface.rx_len, usb_stream_output);
-                USBD_CDC_ReceivePacket(&hUsbDeviceFS, CDC_interface.out_ep);  // Allow next packet
+                // Route to new protocol handler if first byte looks like a length prefix
+                if (CDC_interface.rx_len >= 3 && CDC_interface.rx_buf[0] < 0x30) {
+                    extern void HubUsb_OnCdcData(const uint8_t* data, uint16_t len);
+                    HubUsb_OnCdcData(CDC_interface.rx_buf, CDC_interface.rx_len);
+                } else {
+                    ASCII_protocol_parse_stream(CDC_interface.rx_buf, CDC_interface.rx_len, usb_stream_output);
+                }
+                USBD_CDC_ReceivePacket(&hUsbDeviceFS, CDC_interface.out_ep);
             }
 
             // Native Interface

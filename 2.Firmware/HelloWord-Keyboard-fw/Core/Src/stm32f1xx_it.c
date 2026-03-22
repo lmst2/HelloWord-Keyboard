@@ -294,6 +294,17 @@ void SPI2_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-
+void USART1_IRQHandler(void)
+{
+  extern UART_HandleTypeDef huart1;
+  if (__HAL_UART_GET_FLAG(&huart1, UART_FLAG_RXNE)) {
+    uint8_t byte = (uint8_t)(huart1.Instance->DR & 0xFF);
+    extern void UartComm_OnByteISR(uint8_t b);
+    UartComm_OnByteISR(byte);
+  }
+  if (__HAL_UART_GET_FLAG(&huart1, UART_FLAG_ORE)) {
+    __HAL_UART_CLEAR_OREFLAG(&huart1);
+  }
+}
 /* USER CODE END 1 */
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
