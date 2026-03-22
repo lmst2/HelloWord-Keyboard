@@ -1,4 +1,5 @@
 #include "common_inc.h"
+#include "comm/hub_usb_comm.h"
 #include "ascii_processor.hpp"
 #include "usbd_cdc.h"
 #include "usbd_cdc_if.h"
@@ -135,7 +136,6 @@ static void UsbServerTask(void *ctx)
 
                 // Route to new protocol handler if first byte looks like a length prefix
                 if (CDC_interface.rx_len >= 3 && CDC_interface.rx_buf[0] < 0x30) {
-                    extern "C" void HubUsb_OnCdcData(const uint8_t* data, uint16_t len);
                     HubUsb_OnCdcData(CDC_interface.rx_buf, CDC_interface.rx_len);
                 } else {
                     ASCII_protocol_parse_stream(CDC_interface.rx_buf, CDC_interface.rx_len, usb_stream_output);

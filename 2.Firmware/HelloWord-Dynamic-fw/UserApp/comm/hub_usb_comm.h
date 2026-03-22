@@ -29,6 +29,14 @@ private:
     void HandleEinkSwitch(const uint8_t* payload, uint8_t len);
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+void HubUsb_OnCdcData(const uint8_t* data, uint16_t len);
+#ifdef __cplusplus
+}
+#endif
+
 extern HubUsbComm hubUsb;
 
 #endif // HUB_USB_COMM_H
